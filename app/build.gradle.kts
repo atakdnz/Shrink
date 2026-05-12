@@ -16,6 +16,14 @@ android {
         versionName = "1.0"
     }
 
+    buildTypes {
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isDebuggable = false
+        }
+    }
+
     buildFeatures {
         compose = true
     }

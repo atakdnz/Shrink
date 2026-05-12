@@ -18,6 +18,12 @@ Debug APK:
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Test release APK:
+
+```text
+app/build/outputs/apk/release/app-release.apk
+```
+
 ## Implemented
 
 - Kotlin Android project with Jetpack Compose.
@@ -48,6 +54,7 @@ app/build/outputs/apk/debug/app-debug.apk
 - Replaced the placeholder launcher icon with a cleaner Shrink video-compression mark.
 - Reworked compression settings from wrapping option cards to cheaper radio-style rows to reduce lag after video selection.
 - Added a Settings page for dark mode and primary color selection, with purple as the default accent and true black dark mode.
+- Added a non-debuggable release build type signed with the debug key for on-device smoothness checks before real release signing exists.
 
 ## Known Gaps
 
