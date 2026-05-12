@@ -1,7 +1,6 @@
 package com.example.shrink.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -31,6 +29,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -76,9 +75,29 @@ private val ShrinkColors = lightColorScheme(
     onTertiaryContainer = Color(0xFF5C4300)
 )
 
+private val ShrinkDarkColors = darkColorScheme(
+    primary = Color(0xFF5EEAD4),
+    onPrimary = Color(0xFF042F2E),
+    primaryContainer = Color(0xFF115E59),
+    onPrimaryContainer = Color(0xFFCCFBF1),
+    secondary = Color(0xFFCBD5E1),
+    background = Color(0xFF0F172A),
+    surface = Color(0xFF111827),
+    surfaceVariant = Color(0xFF334155),
+    error = Color(0xFFFCA5A5),
+    errorContainer = Color(0xFF7F1D1D),
+    onErrorContainer = Color(0xFFFEE2E2),
+    tertiaryContainer = Color(0xFF713F12),
+    onTertiaryContainer = Color(0xFFFEF3C7)
+)
+
+private val QualityOptions = listOf(CompressionPreset.HIGH, CompressionPreset.BALANCED, CompressionPreset.SMALL, CompressionPreset.TINY)
+
 @Composable
 fun CompressorScreen(
     state: CompressorUiState,
+    darkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
     onPickVideo: () -> Unit,
     onSettingsChange: (CompressionSettings) -> Unit,
     onCompress: () -> Unit,
@@ -89,31 +108,30 @@ fun CompressorScreen(
     onSave: () -> Unit,
     onRetryH264: () -> Unit
 ) {
-    MaterialTheme(colorScheme = ShrinkColors) {
+    MaterialTheme(colorScheme = if (darkMode) ShrinkDarkColors else ShrinkColors) {
         Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-            Column(
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                    .padding(padding),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Header()
+                item { Header(darkMode, onDarkModeChange) }
                 when {
                     state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
-                        EmptyState(onPickVideo)
-                        state.errorMessage?.let { MessageCard(it, MessageTone.Error) }
+                        item { EmptyState(onPickVideo) }
+                        state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
                     }
-                    state.jobState is CompressionJobState.LoadingMetadata -> LoadingCard("Reading video details")
+                    state.jobState is CompressionJobState.LoadingMetadata -> item { LoadingCard("Reading video details") }
                     else -> {
-                        state.selectedVideo?.let { MetadataCard(it) }
-                        state.warningMessage?.let { MessageCard(it, MessageTone.Warning) }
-                        state.errorMessage?.let { MessageCard(it, MessageTone.Error) }
-                        SettingsSection(state.settings, onSettingsChange)
-                        ActionSection(state, onCompress, onCancel, onClear, onRetryH264)
-                        state.output?.let { ResultSection(it, onShare, onOpen, onSave, onClear) }
-                        state.savedMessage?.let { MessageCard(it, MessageTone.Success) }
+                        state.selectedVideo?.let { item { MetadataCard(it) } }
+                        state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
+                        state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
+                        item { SettingsSection(state.settings, onSettingsChange) }
+                        item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
+                        state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
+                        state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
                     }
                 }
             }
@@ -122,10 +140,16 @@ fun CompressorScreen(
 }
 
 @Composable
-private fun Header() {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Shrink", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        Text("Video compressor", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+private fun Header(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Shrink", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+            Text("Video compressor", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Dark", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+            Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
+        }
     }
 }
 
@@ -237,7 +261,7 @@ private fun SettingsSection(settings: CompressionSettings, onChange: (Compressio
             Text("Compression", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             OptionGroup("Quality") {
                 ChoiceGrid(
-                    values = listOf(CompressionPreset.HIGH, CompressionPreset.BALANCED, CompressionPreset.SMALL, CompressionPreset.TINY),
+                    values = QualityOptions,
                     selected = settings.preset,
                     label = { it.name.lowercase().replaceFirstChar(Char::uppercase) },
                     detail = {

@@ -43,6 +43,9 @@ app/build/outputs/apk/debug/app-debug.apk
 - Unit tests for preset mapping behavior.
 - Polished Compose UI with responsive option cards, metadata chips, message panels, result summary, and improved action layout.
 - Rotation-aware output sizing for phone portrait videos that are stored as landscape frames with 90/270 degree metadata.
+- Improved UI responsiveness by switching the main scroll surface to lazy composition.
+- Added an in-app dark mode toggle.
+- Replaced the placeholder launcher icon with a cleaner Shrink video-compression mark.
 
 ## Known Gaps
 

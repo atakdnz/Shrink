@@ -14,6 +14,9 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import com.example.shrink.share.ShareIntentHandler
 import com.example.shrink.ui.CompressorScreen
 import com.example.shrink.viewmodel.CompressorViewModel
@@ -26,6 +29,7 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
         setContent {
             val state by viewModel.uiState.collectAsState()
+            var darkMode by rememberSaveable { mutableStateOf(false) }
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
                 if (uri != null) viewModel.selectVideo(uri)
             }
@@ -50,6 +54,8 @@ class MainActivity : ComponentActivity() {
             }
             CompressorScreen(
                 state = state,
+                darkMode = darkMode,
+                onDarkModeChange = { darkMode = it },
                 onPickVideo = {
                     if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this)) {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
