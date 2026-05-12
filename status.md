@@ -46,6 +46,8 @@ app/build/outputs/apk/debug/app-debug.apk
 - Improved UI responsiveness by switching the main scroll surface to lazy composition.
 - Added an in-app dark mode toggle.
 - Replaced the placeholder launcher icon with a cleaner Shrink video-compression mark.
+- Reworked compression settings from wrapping option cards to cheaper radio-style rows to reduce lag after video selection.
+- Added a Settings page for dark mode and primary color selection, with purple as the default accent and true black dark mode.
 
 ## Known Gaps
 

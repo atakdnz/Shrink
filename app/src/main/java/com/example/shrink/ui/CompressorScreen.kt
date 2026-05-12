@@ -4,18 +4,16 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -24,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -59,45 +58,58 @@ import com.example.shrink.util.formatDuration
 import com.example.shrink.util.formatPercent
 import com.example.shrink.util.formatResolution
 
-private val ShrinkColors = lightColorScheme(
-    primary = Color(0xFF0F766E),
-    onPrimary = Color.White,
-    primaryContainer = Color(0xFFCCFBF1),
-    onPrimaryContainer = Color(0xFF0F3F3A),
-    secondary = Color(0xFF334155),
-    background = Color(0xFFF8FAFC),
-    surface = Color.White,
-    surfaceVariant = Color(0xFFE2E8F0),
-    error = Color(0xFFB42318),
-    errorContainer = Color(0xFFFEE4E2),
-    onErrorContainer = Color(0xFF7A271A),
-    tertiaryContainer = Color(0xFFFFF7D6),
-    onTertiaryContainer = Color(0xFF5C4300)
-)
+enum class AppPage { Compressor, Settings }
 
-private val ShrinkDarkColors = darkColorScheme(
-    primary = Color(0xFF5EEAD4),
-    onPrimary = Color(0xFF042F2E),
-    primaryContainer = Color(0xFF115E59),
-    onPrimaryContainer = Color(0xFFCCFBF1),
-    secondary = Color(0xFFCBD5E1),
-    background = Color(0xFF0F172A),
-    surface = Color(0xFF111827),
-    surfaceVariant = Color(0xFF334155),
-    error = Color(0xFFFCA5A5),
-    errorContainer = Color(0xFF7F1D1D),
-    onErrorContainer = Color(0xFFFEE2E2),
-    tertiaryContainer = Color(0xFF713F12),
-    onTertiaryContainer = Color(0xFFFEF3C7)
-)
+enum class AppAccent(val label: String, val light: Color, val lightContainer: Color, val dark: Color, val darkContainer: Color) {
+    Purple("Purple", Color(0xFF6D28D9), Color(0xFFEDE9FE), Color(0xFFC4B5FD), Color(0xFF3B0764)),
+    Blue("Blue", Color(0xFF2563EB), Color(0xFFDBEAFE), Color(0xFF93C5FD), Color(0xFF172554)),
+    Green("Green", Color(0xFF15803D), Color(0xFFDCFCE7), Color(0xFF86EFAC), Color(0xFF052E16)),
+    Red("Red", Color(0xFFB91C1C), Color(0xFFFEE2E2), Color(0xFFFCA5A5), Color(0xFF450A0A))
+}
 
-private val QualityOptions = listOf(CompressionPreset.HIGH, CompressionPreset.BALANCED, CompressionPreset.SMALL, CompressionPreset.TINY)
+private fun appColors(darkMode: Boolean, accent: AppAccent) = if (darkMode) {
+    darkColorScheme(
+        primary = accent.dark,
+        onPrimary = Color.Black,
+        primaryContainer = accent.darkContainer,
+        onPrimaryContainer = Color.White,
+        secondary = Color(0xFFE5E7EB),
+        background = Color.Black,
+        surface = Color(0xFF09090B),
+        surfaceVariant = Color(0xFF27272A),
+        error = Color(0xFFFCA5A5),
+        errorContainer = Color(0xFF450A0A),
+        onErrorContainer = Color(0xFFFEE2E2),
+        tertiaryContainer = Color(0xFF422006),
+        onTertiaryContainer = Color(0xFFFEF3C7)
+    )
+} else {
+    lightColorScheme(
+        primary = accent.light,
+        onPrimary = Color.White,
+        primaryContainer = accent.lightContainer,
+        onPrimaryContainer = Color(0xFF1F2937),
+        secondary = Color(0xFF475569),
+        background = Color(0xFFF8FAFC),
+        surface = Color.White,
+        surfaceVariant = Color(0xFFE2E8F0),
+        error = Color(0xFFB42318),
+        errorContainer = Color(0xFFFEE4E2),
+        onErrorContainer = Color(0xFF7A271A),
+        tertiaryContainer = Color(0xFFFFF7D6),
+        onTertiaryContainer = Color(0xFF5C4300)
+    )
+}
 
 @Composable
 fun CompressorScreen(
     state: CompressorUiState,
+    page: AppPage,
+    onPageChange: (AppPage) -> Unit,
     darkMode: Boolean,
     onDarkModeChange: (Boolean) -> Unit,
+    accent: AppAccent,
+    onAccentChange: (AppAccent) -> Unit,
     onPickVideo: () -> Unit,
     onSettingsChange: (CompressionSettings) -> Unit,
     onCompress: () -> Unit,
@@ -108,30 +120,32 @@ fun CompressorScreen(
     onSave: () -> Unit,
     onRetryH264: () -> Unit
 ) {
-    MaterialTheme(colorScheme = if (darkMode) ShrinkDarkColors else ShrinkColors) {
+    MaterialTheme(colorScheme = appColors(darkMode, accent)) {
         Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                item { Header(darkMode, onDarkModeChange) }
-                when {
-                    state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
-                        item { EmptyState(onPickVideo) }
-                        state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
-                    }
-                    state.jobState is CompressionJobState.LoadingMetadata -> item { LoadingCard("Reading video details") }
-                    else -> {
-                        state.selectedVideo?.let { item { MetadataCard(it) } }
-                        state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
-                        state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
-                        item { SettingsSection(state.settings, onSettingsChange) }
-                        item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
-                        state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
-                        state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
+                item { Header(page, onPageChange) }
+                if (page == AppPage.Settings) {
+                    item { AppearanceSettings(darkMode, onDarkModeChange, accent, onAccentChange) }
+                } else {
+                    when {
+                        state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
+                            item { EmptyState(onPickVideo) }
+                            state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
+                        }
+                        state.jobState is CompressionJobState.LoadingMetadata -> item { LoadingCard("Reading video details") }
+                        else -> {
+                            state.selectedVideo?.let { item { MetadataCard(it) } }
+                            state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
+                            state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
+                            item { SettingsSection(state.settings, onSettingsChange) }
+                            item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
+                            state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
+                            state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
+                        }
                     }
                 }
             }
@@ -140,15 +154,39 @@ fun CompressorScreen(
 }
 
 @Composable
-private fun Header(darkMode: Boolean, onDarkModeChange: (Boolean) -> Unit) {
+private fun Header(page: AppPage, onPageChange: (AppPage) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("Shrink", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
             Text("Video compressor", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
         }
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Dark", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-            Switch(checked = darkMode, onCheckedChange = onDarkModeChange)
+        TextButton(onClick = { onPageChange(if (page == AppPage.Settings) AppPage.Compressor else AppPage.Settings) }) {
+            Text(if (page == AppPage.Settings) "Done" else "Settings")
+        }
+    }
+}
+
+@Composable
+private fun AppearanceSettings(
+    darkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
+    accent: AppAccent,
+    onAccentChange: (AppAccent) -> Unit
+) {
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            ToggleRow("Dark mode", "Use true black background", darkMode, onDarkModeChange)
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            Text("Primary color", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            AppAccent.entries.forEach {
+                SelectRow(
+                    title = it.label,
+                    detail = if (it == AppAccent.Purple) "Default" else "Accent",
+                    selected = it == accent,
+                    onClick = { onAccentChange(it) }
+                )
+            }
         }
     }
 }
@@ -159,14 +197,9 @@ private fun EmptyState(onPickVideo: () -> Unit) {
         Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Pick a video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "Choose a video here, or share one from Gallery or Files.",
-                    color = MaterialTheme.colorScheme.secondary
-                )
+                Text("Choose a video here, or share one from Gallery or Files.", color = MaterialTheme.colorScheme.secondary)
             }
-            Button(onClick = onPickVideo, modifier = Modifier.fillMaxWidth()) {
-                Text("Pick Video")
-            }
+            Button(onClick = onPickVideo, modifier = Modifier.fillMaxWidth()) { Text("Pick Video") }
         }
     }
 }
@@ -181,55 +214,34 @@ private fun LoadingCard(message: String) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MetadataCard(video: VideoInfo) {
     Panel {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    video.displayName,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(formatBytes(video.sizeBytes), color = MaterialTheme.colorScheme.secondary)
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                video.displayName,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(formatBytes(video.sizeBytes), color = MaterialTheme.colorScheme.secondary)
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StatChip("Duration", formatDuration(video.durationMs))
-                StatChip("Resolution", formatResolution(video.width, video.height))
-                StatChip("FPS", video.fps?.let { "${it.toInt()}" } ?: "Unknown")
-                StatChip("Video", video.videoCodec?.codecLabel() ?: "Unknown")
-                StatChip("Audio", if (video.hasAudio) video.audioCodec?.codecLabel() ?: "Present" else "None")
-                if (video.isHdr == true) StatChip("HDR", "Detected", emphasized = true)
-            }
+            MetadataRow("Duration", formatDuration(video.durationMs))
+            MetadataRow("Resolution", formatResolution(video.width, video.height))
+            MetadataRow("FPS", video.fps?.let { "${it.toInt()}" } ?: "Unknown")
+            MetadataRow("Video", video.videoCodec?.codecLabel() ?: "Unknown")
+            MetadataRow("Audio", if (video.hasAudio) video.audioCodec?.codecLabel() ?: "Present" else "None")
+            if (video.isHdr == true) MetadataRow("HDR", "Detected")
         }
     }
 }
 
 @Composable
-private fun StatChip(label: String, value: String, emphasized: Boolean = false) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (emphasized) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.background,
-        border = BorderStroke(1.dp, if (emphasized) MaterialTheme.colorScheme.error.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(Modifier.width(132.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-            Text(
-                value,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                color = if (emphasized) MaterialTheme.colorScheme.error else Color.Unspecified
-            )
-        }
+private fun MetadataRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, color = MaterialTheme.colorScheme.secondary)
+        Text(value, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
@@ -243,58 +255,36 @@ private fun MessageCard(message: String, tone: MessageTone) {
         MessageTone.Success -> MaterialTheme.colorScheme.primaryContainer to MaterialTheme.colorScheme.onPrimaryContainer
     }
     Surface(shape = RoundedCornerShape(8.dp), color = colors.first) {
-        Text(
-            message,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            color = colors.second,
-            style = MaterialTheme.typography.bodyMedium
-        )
+        Text(message, modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp), color = colors.second)
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SettingsSection(settings: CompressionSettings, onChange: (CompressionSettings) -> Unit) {
     var advanced by remember { mutableStateOf(false) }
     Panel {
-        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Compression", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             OptionGroup("Quality") {
-                ChoiceGrid(
-                    values = QualityOptions,
-                    selected = settings.preset,
-                    label = { it.name.lowercase().replaceFirstChar(Char::uppercase) },
-                    detail = {
-                        when (it) {
-                            CompressionPreset.HIGH -> "Larger"
-                            CompressionPreset.BALANCED -> "Default"
-                            CompressionPreset.SMALL -> "Smaller"
-                            CompressionPreset.TINY -> "Smallest"
-                            CompressionPreset.CUSTOM -> "Custom"
-                        }
-                    },
-                    onSelected = { onChange(settings.copy(preset = it)) }
-                )
+                listOf(CompressionPreset.HIGH, CompressionPreset.BALANCED, CompressionPreset.SMALL, CompressionPreset.TINY).forEach {
+                    SelectRow(it.label(), it.detail(), settings.preset == it) { onChange(settings.copy(preset = it)) }
+                }
             }
             OptionGroup("Resolution") {
-                ChoiceGrid(
-                    values = OutputResolution.entries,
-                    selected = settings.resolution,
-                    label = { it.label() },
-                    detail = { if (it == OutputResolution.ORIGINAL) "No resize" else "Max ${it.label()}" },
-                    onSelected = { onChange(settings.copy(resolution = it)) }
-                )
+                OutputResolution.entries.forEach {
+                    SelectRow(it.label(), if (it == OutputResolution.ORIGINAL) "No resize" else "Max ${it.label()}", settings.resolution == it) {
+                        onChange(settings.copy(resolution = it))
+                    }
+                }
             }
             OptionGroup("Codec") {
-                ChoiceGrid(
-                    values = OutputCodec.entries,
-                    selected = settings.codec,
-                    label = { if (it == OutputCodec.H265_HEVC) "H.265" else "H.264" },
-                    detail = { if (it == OutputCodec.H265_HEVC) "Smaller" else "Compatible" },
-                    onSelected = { onChange(settings.copy(codec = it)) }
-                )
+                OutputCodec.entries.forEach {
+                    SelectRow(if (it == OutputCodec.H265_HEVC) "H.265" else "H.264", if (it == OutputCodec.H265_HEVC) "Smaller output" else "Better compatibility", settings.codec == it) {
+                        onChange(settings.copy(codec = it))
+                    }
+                }
             }
-            TextButton(onClick = { advanced = !advanced }) {
+            TextButton(onClick = { advanced = !advanced }, modifier = Modifier.fillMaxWidth()) {
                 Text(if (advanced) "Hide Advanced" else "Advanced")
             }
             if (advanced) AdvancedSettings(settings, onChange)
@@ -304,39 +294,41 @@ private fun SettingsSection(settings: CompressionSettings, onChange: (Compressio
 
 @Composable
 private fun OptionGroup(title: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
         content()
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChoiceGrid(
-    values: List<T>,
-    selected: T,
-    label: (T) -> String,
-    detail: (T) -> String,
-    onSelected: (T) -> Unit
-) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        values.forEach { value ->
-            val isSelected = value == selected
-            Surface(
-                onClick = { onSelected(value) },
-                shape = RoundedCornerShape(8.dp),
-                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                border = BorderStroke(
-                    1.dp,
-                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(Modifier.width(116.dp).padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(label(value), fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(detail(value), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-                }
+private fun SelectRow(title: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RadioButton(selected = selected, onClick = onClick)
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold)
+                Text(detail, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
             }
         }
+    }
+}
+
+@Composable
+private fun ToggleRow(title: String, detail: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold)
+            Text(detail, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -345,9 +337,7 @@ private fun AdvancedSettings(settings: CompressionSettings, onChange: (Compressi
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
             value = settings.targetSizeBytes?.let { (it / (1024 * 1024)).toString() } ?: "",
-            onValueChange = {
-                onChange(settings.copy(preset = CompressionPreset.CUSTOM, targetSizeBytes = it.toLongOrNull()?.times(1024 * 1024)))
-            },
+            onValueChange = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, targetSizeBytes = it.toLongOrNull()?.times(1024 * 1024))) },
             label = { Text("Approx target size MB") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             singleLine = true,
@@ -356,9 +346,7 @@ private fun AdvancedSettings(settings: CompressionSettings, onChange: (Compressi
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(
                 value = settings.customVideoBitrate?.let { (it / 1000).toString() } ?: "",
-                onValueChange = {
-                    onChange(settings.copy(preset = CompressionPreset.CUSTOM, customVideoBitrate = it.toIntOrNull()?.times(1000)))
-                },
+                onValueChange = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, customVideoBitrate = it.toIntOrNull()?.times(1000))) },
                 label = { Text("Video kbps") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
@@ -366,9 +354,7 @@ private fun AdvancedSettings(settings: CompressionSettings, onChange: (Compressi
             )
             OutlinedTextField(
                 value = settings.customAudioBitrate?.let { (it / 1000).toString() } ?: "",
-                onValueChange = {
-                    onChange(settings.copy(preset = CompressionPreset.CUSTOM, customAudioBitrate = it.toIntOrNull()?.times(1000)))
-                },
+                onValueChange = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, customAudioBitrate = it.toIntOrNull()?.times(1000))) },
                 label = { Text("Audio kbps") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
@@ -376,31 +362,18 @@ private fun AdvancedSettings(settings: CompressionSettings, onChange: (Compressi
             )
         }
         OptionGroup("FPS cap") {
-            ChoiceGrid(
-                values = FpsMode.entries,
-                selected = settings.fpsMode,
-                label = { it.label() },
-                detail = { if (it == FpsMode.ORIGINAL) "Keep" else "Max" },
-                onSelected = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, fpsMode = it)) }
-            )
-        }
-        Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.background) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Remove audio", fontWeight = FontWeight.SemiBold)
-                    Text("Output video only", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+            FpsMode.entries.forEach {
+                SelectRow(it.label(), if (it == FpsMode.ORIGINAL) "Keep source" else "Maximum FPS", settings.fpsMode == it) {
+                    onChange(settings.copy(preset = CompressionPreset.CUSTOM, fpsMode = it))
                 }
-                Switch(
-                    checked = settings.audioMode == AudioMode.REMOVE,
-                    onCheckedChange = {
-                        onChange(settings.copy(preset = CompressionPreset.CUSTOM, audioMode = if (it) AudioMode.REMOVE else AudioMode.KEEP))
-                    }
-                )
             }
         }
+        ToggleRow(
+            title = "Remove audio",
+            detail = "Output video only",
+            checked = settings.audioMode == AudioMode.REMOVE,
+            onCheckedChange = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, audioMode = if (it) AudioMode.REMOVE else AudioMode.KEEP)) }
+        )
     }
 }
 
@@ -453,24 +426,14 @@ private fun ProgressPanel(progress: Float?, label: String, onCancel: () -> Unit)
 }
 
 @Composable
-private fun ResultSection(
-    output: CompressedVideo,
-    onShare: () -> Unit,
-    onOpen: () -> Unit,
-    onSave: () -> Unit,
-    onAnother: () -> Unit
-) {
+private fun ResultSection(output: CompressedVideo, onShare: () -> Unit, onOpen: () -> Unit, onSave: () -> Unit, onAnother: () -> Unit) {
     Panel {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Compressed video ready", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.background) {
-                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ResultRow("Original", formatBytes(output.originalSizeBytes))
-                    ResultRow("Output", formatBytes(output.outputSizeBytes))
-                    output.compressionRatioPercent?.let {
-                        ResultRow("Change", if (it >= 0f) "${formatPercent(it)} smaller" else "${formatPercent(it)} larger")
-                    }
-                }
+            ResultRow("Original", formatBytes(output.originalSizeBytes))
+            ResultRow("Output", formatBytes(output.outputSizeBytes))
+            output.compressionRatioPercent?.let {
+                ResultRow("Change", if (it >= 0f) "${formatPercent(it)} smaller" else "${formatPercent(it)} larger")
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 Button(onClick = onShare, modifier = Modifier.weight(1f)) { Text("Share") }
@@ -501,10 +464,18 @@ private fun Panel(content: @Composable () -> Unit) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
-        Box(Modifier.fillMaxWidth().padding(16.dp)) {
-            content()
-        }
+        Box(Modifier.fillMaxWidth().padding(16.dp)) { content() }
     }
+}
+
+private fun CompressionPreset.label() = name.lowercase().replaceFirstChar(Char::uppercase)
+
+private fun CompressionPreset.detail() = when (this) {
+    CompressionPreset.HIGH -> "Preserve quality"
+    CompressionPreset.BALANCED -> "Default"
+    CompressionPreset.SMALL -> "Smaller file"
+    CompressionPreset.TINY -> "Smallest file"
+    CompressionPreset.CUSTOM -> "Custom"
 }
 
 private fun OutputResolution.label() = when (this) {

@@ -18,6 +18,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.example.shrink.share.ShareIntentHandler
+import com.example.shrink.ui.AppAccent
+import com.example.shrink.ui.AppPage
 import com.example.shrink.ui.CompressorScreen
 import com.example.shrink.viewmodel.CompressorViewModel
 
@@ -30,6 +32,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.uiState.collectAsState()
             var darkMode by rememberSaveable { mutableStateOf(false) }
+            var page by rememberSaveable { mutableStateOf(AppPage.Compressor) }
+            var accentName by rememberSaveable { mutableStateOf(AppAccent.Purple.name) }
+            val accent = runCatching { enumValueOf<AppAccent>(accentName) }.getOrDefault(AppAccent.Purple)
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
                 if (uri != null) viewModel.selectVideo(uri)
             }
@@ -54,8 +59,12 @@ class MainActivity : ComponentActivity() {
             }
             CompressorScreen(
                 state = state,
+                page = page,
+                onPageChange = { page = it },
                 darkMode = darkMode,
                 onDarkModeChange = { darkMode = it },
+                accent = accent,
+                onAccentChange = { accentName = it.name },
                 onPickVideo = {
                     if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this)) {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
