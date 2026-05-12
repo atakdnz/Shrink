@@ -15,13 +15,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.example.shrink.settings.AppPreferences
+import com.example.shrink.settings.AppearancePreferences
 import com.example.shrink.share.ShareIntentHandler
 import com.example.shrink.ui.AppAccent
 import com.example.shrink.ui.AppPage
 import com.example.shrink.ui.CompressorScreen
 import com.example.shrink.viewmodel.CompressorViewModel
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val viewModel: CompressorViewModel by viewModels()
@@ -31,10 +36,11 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
         setContent {
             val state by viewModel.uiState.collectAsState()
-            var darkMode by rememberSaveable { mutableStateOf(false) }
+            val appPreferences = remember { AppPreferences(applicationContext) }
+            val appearance by appPreferences.appearance.collectAsState(AppearancePreferences())
+            val scope = rememberCoroutineScope()
             var page by rememberSaveable { mutableStateOf(AppPage.Compressor) }
-            var accentName by rememberSaveable { mutableStateOf(AppAccent.Purple.name) }
-            val accent = runCatching { enumValueOf<AppAccent>(accentName) }.getOrDefault(AppAccent.Purple)
+            val accent = runCatching { enumValueOf<AppAccent>(appearance.accentName) }.getOrDefault(AppAccent.Purple)
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
                 if (uri != null) viewModel.selectVideo(uri)
             }
@@ -44,10 +50,14 @@ class MainActivity : ComponentActivity() {
                     viewModel.selectVideo(uri)
                 }
             }
-            val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+            val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                viewModel.setNotificationsEnabled(granted)
+            }
             LaunchedEffect(Unit) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                } else {
+                    viewModel.setNotificationsEnabled(true)
                 }
             }
             val output = state.output
@@ -61,10 +71,14 @@ class MainActivity : ComponentActivity() {
                 state = state,
                 page = page,
                 onPageChange = { page = it },
-                darkMode = darkMode,
-                onDarkModeChange = { darkMode = it },
+                darkMode = appearance.darkMode,
+                onDarkModeChange = { darkMode ->
+                    scope.launch { appPreferences.saveAppearance(appearance.copy(darkMode = darkMode)) }
+                },
                 accent = accent,
-                onAccentChange = { accentName = it.name },
+                onAccentChange = { selectedAccent ->
+                    scope.launch { appPreferences.saveAppearance(appearance.copy(accentName = selectedAccent.name)) }
+                },
                 onPickVideo = {
                     if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this)) {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))

@@ -16,6 +16,7 @@ import com.example.shrink.compression.CompressorUiState
 import com.example.shrink.compression.OutputCodec
 import com.example.shrink.compression.VideoInfo
 import com.example.shrink.metadata.VideoMetadataReader
+import com.example.shrink.settings.AppPreferences
 import com.example.shrink.service.CompressionEvent
 import com.example.shrink.service.CompressionEventBus
 import com.example.shrink.service.CompressionForegroundService
@@ -35,12 +36,18 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     private val metadataReader = VideoMetadataReader(application)
     private val outputFileManager = OutputFileManager(application)
     private val mediaStoreSaver = MediaStoreSaver(application)
+    private val appPreferences = AppPreferences(application)
     private val _uiState = MutableStateFlow(CompressorUiState())
     val uiState: StateFlow<CompressorUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
             CompressionEventBus.events.collect { event -> handleEvent(event) }
+        }
+        viewModelScope.launch {
+            appPreferences.compressionSettings.collect { settings ->
+                _uiState.update { it.copy(settings = settings) }
+            }
         }
     }
 
@@ -66,7 +73,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             } else {
-                val settings = defaultSettingsFor(videoInfo)
+                val settings = settingsFor(videoInfo, _uiState.value.settings)
                 val warning = if (videoInfo.isHdr == true) "HDR video detected. Compressed output may lose HDR/color accuracy." else null
                 _uiState.update {
                     it.copy(
@@ -84,6 +91,13 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     fun updateSettings(settings: CompressionSettings) {
         val warning = _uiState.value.selectedVideo?.let { CompressionPresetMapper.mapToEncodingConfig(it, settings).warning }
         _uiState.update { it.copy(settings = settings, warningMessage = warning ?: it.warningMessage) }
+        viewModelScope.launch {
+            appPreferences.saveCompressionSettings(settings)
+        }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        _uiState.update { it.copy(notificationsEnabled = enabled) }
     }
 
     fun compress() {
@@ -100,7 +114,14 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         val settings = _uiState.value.settings
         val managed = outputFileManager.createOutput(video.displayName)
         val request = ServiceCompressionRequest(video, settings, managed.tempFile, managed.finalFile)
-        _uiState.update { it.copy(jobState = CompressionJobState.Preparing, errorMessage = null, output = null) }
+        _uiState.update {
+            it.copy(
+                jobState = CompressionJobState.Preparing,
+                errorMessage = null,
+                output = null,
+                warningMessage = compressionStartWarning(it.warningMessage, it.notificationsEnabled)
+            )
+        }
         runCatching { CompressionForegroundService.start(getApplication(), request) }
             .onFailure {
                 _uiState.update { state ->
@@ -192,12 +213,19 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    private fun defaultSettingsFor(videoInfo: VideoInfo): CompressionSettings {
+    private fun settingsFor(videoInfo: VideoInfo, currentSettings: CompressionSettings): CompressionSettings {
+        if (currentSettings != CompressionSettings.default()) return currentSettings
         val needsFpsCap = (videoInfo.fps ?: 0f) > 30f
         return CompressionSettings.default().copy(
             resolution = if (maxOf(videoInfo.width ?: 0, videoInfo.height ?: 0) > 1080) com.example.shrink.compression.OutputResolution.P1080 else com.example.shrink.compression.OutputResolution.ORIGINAL,
             fpsMode = if (needsFpsCap) com.example.shrink.compression.FpsMode.FPS_30 else com.example.shrink.compression.FpsMode.ORIGINAL,
             audioMode = AudioMode.KEEP
         )
+    }
+
+    private fun compressionStartWarning(currentWarning: String?, notificationsEnabled: Boolean): String? {
+        if (notificationsEnabled) return currentWarning
+        val notificationWarning = "Notifications are off. Compression can continue, but progress may be less visible outside the app."
+        return listOfNotNull(currentWarning, notificationWarning).distinct().joinToString("\n\n").ifBlank { null }
     }
 }

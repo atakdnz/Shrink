@@ -55,6 +55,8 @@ app/build/outputs/apk/release/app-release.apk
 - Reworked compression settings from wrapping option cards to cheaper radio-style rows to reduce lag after video selection.
 - Added a Settings page for dark mode and primary color selection, with purple as the default accent and true black dark mode.
 - Added a non-debuggable release build type signed with the debug key for on-device smoothness checks before real release signing exists.
+- Added clearer Android 13+ notification-permission UX when compression starts with notifications disabled.
+- Persisted appearance and compression settings with AndroidX DataStore.
 
 ## Known Gaps
 
@@ -63,7 +65,7 @@ app/build/outputs/apk/release/app-release.apk
 - HDR handling warns the user, but output color accuracy needs real sample testing.
 - iPhone MOV, Samsung HEVC, 4K60, screen recordings, no-audio videos, very short clips, large files, and unusual aspect ratios need device validation.
 - Foreground service behavior should be tested with the app backgrounded and the screen off.
-- Runtime notification permission is requested, but denied-permission UX can be improved.
+- Runtime notification permission is requested, and denial now surfaces an in-app warning before compression continues.
 - The event bus is process-local; if the process dies during compression, UI state restoration is limited.
 - The app has no release signing, CI, or Play distribution setup.
 
