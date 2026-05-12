@@ -62,11 +62,23 @@ class CompressionPresetMapperTest {
         assertNull(config.fps)
     }
 
+    @Test
+    fun rotatedPortraitVideoKeepsPortraitOutputDimensions() {
+        val config = CompressionPresetMapper.mapToEncodingConfig(
+            videoInfo = videoInfo(width = 3840, height = 2160, rotationDegrees = 90),
+            settings = CompressionSettings.default()
+        )
+
+        assertEquals(1080, config.outputWidth)
+        assertEquals(1920, config.outputHeight)
+    }
+
     private fun videoInfo(
         width: Int = 1920,
         height: Int = 1080,
         fps: Float? = 30f,
-        durationMs: Long? = 60_000
+        durationMs: Long? = 60_000,
+        rotationDegrees: Int? = 0
     ) = VideoInfo(
         uri = mock(Uri::class.java),
         displayName = "sample.mp4",
@@ -79,6 +91,6 @@ class CompressionPresetMapperTest {
         audioCodec = "audio/mp4a-latm",
         hasAudio = true,
         isHdr = false,
-        rotationDegrees = 0
+        rotationDegrees = rotationDegrees
     )
 }

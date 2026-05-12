@@ -5,8 +5,7 @@ import kotlin.math.roundToInt
 
 object CompressionPresetMapper {
     fun mapToEncodingConfig(videoInfo: VideoInfo, settings: CompressionSettings): EncodingConfig {
-        val sourceWidth = videoInfo.width
-        val sourceHeight = videoInfo.height
+        val (sourceWidth, sourceHeight) = displayDimensions(videoInfo)
         val codecMultiplier = if (settings.codec == OutputCodec.H264_AVC) 1.45 else 1.0
         val targetLongSide = when (settings.preset) {
             CompressionPreset.HIGH -> 2160
@@ -47,6 +46,14 @@ object CompressionPresetMapper {
         OutputResolution.P720 -> 720
         OutputResolution.P480 -> 480
         OutputResolution.P360 -> 360
+    }
+
+    private fun displayDimensions(videoInfo: VideoInfo): Pair<Int?, Int?> {
+        val width = videoInfo.width
+        val height = videoInfo.height
+        if (width == null || height == null) return width to height
+        val rotation = videoInfo.rotationDegrees ?: 0
+        return if (rotation == 90 || rotation == 270) height to width else width to height
     }
 
     private fun scaledDimensions(width: Int?, height: Int?, maxResolution: Int?): Pair<Int?, Int?> {
