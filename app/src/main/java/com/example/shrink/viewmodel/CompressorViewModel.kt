@@ -79,6 +79,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                     it.copy(
                         selectedVideo = videoInfo,
                         settings = settings,
+                        estimate = CompressionPresetMapper.estimate(videoInfo, settings),
                         jobState = CompressionJobState.Idle,
                         warningMessage = warning,
                         errorMessage = null
@@ -89,8 +90,8 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun updateSettings(settings: CompressionSettings) {
-        val warning = _uiState.value.selectedVideo?.let { CompressionPresetMapper.mapToEncodingConfig(it, settings).warning }
-        _uiState.update { it.copy(settings = settings, warningMessage = warning ?: it.warningMessage) }
+        val estimate = _uiState.value.selectedVideo?.let { CompressionPresetMapper.estimate(it, settings) }
+        _uiState.update { it.copy(settings = settings, estimate = estimate, warningMessage = estimate?.warning ?: it.warningMessage) }
         viewModelScope.launch {
             appPreferences.saveCompressionSettings(settings)
         }

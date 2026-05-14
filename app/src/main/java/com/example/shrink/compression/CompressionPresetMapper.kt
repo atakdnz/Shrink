@@ -40,6 +40,27 @@ object CompressionPresetMapper {
         )
     }
 
+    fun estimate(videoInfo: VideoInfo, settings: CompressionSettings): CompressionEstimate {
+        val config = mapToEncodingConfig(videoInfo, settings)
+        val estimatedSize = estimateOutputSizeBytes(videoInfo.durationMs, config.videoBitrate, config.audioBitrate, config.removeAudio)
+        val savings = estimatedSize?.let { outputSize ->
+            videoInfo.sizeBytes?.takeIf { it > 0L }?.let { originalSize ->
+                (1f - outputSize.toFloat() / originalSize.toFloat()) * 100f
+            }
+        }
+        return CompressionEstimate(
+            outputWidth = config.outputWidth ?: videoInfo.width,
+            outputHeight = config.outputHeight ?: videoInfo.height,
+            videoBitrate = config.videoBitrate,
+            audioBitrate = config.audioBitrate,
+            fps = config.fps,
+            removeAudio = config.removeAudio,
+            estimatedOutputSizeBytes = estimatedSize,
+            estimatedSavingsPercent = savings,
+            warning = config.warning
+        )
+    }
+
     private fun resolutionLongSide(resolution: OutputResolution) = when (resolution) {
         OutputResolution.ORIGINAL -> null
         OutputResolution.P1080 -> 1080
@@ -98,5 +119,16 @@ object CompressionPresetMapper {
         if (durationMs == null || targetSizeBytes == null || durationMs <= 0) return null
         val total = (targetSizeBytes * 8.0 / (durationMs / 1000.0)).roundToInt()
         return if (audioMode == AudioMode.REMOVE) total else total - (audioBitrate ?: 128_000)
+    }
+
+    private fun estimateOutputSizeBytes(
+        durationMs: Long?,
+        videoBitrate: Int?,
+        audioBitrate: Int?,
+        removeAudio: Boolean
+    ): Long? {
+        if (durationMs == null || durationMs <= 0 || videoBitrate == null) return null
+        val totalBitrate = videoBitrate + if (removeAudio) 0 else (audioBitrate ?: 0)
+        return ((totalBitrate / 8.0) * (durationMs / 1000.0)).roundToInt().toLong()
     }
 }

@@ -51,6 +51,21 @@ class CompressionPresetMapperTest {
     }
 
     @Test
+    fun estimateComputesApproximateOutputSizeAndSavings() {
+        val estimate = CompressionPresetMapper.estimate(
+            videoInfo = videoInfo(durationMs = 10_000),
+            settings = CompressionSettings.default().copy(
+                customVideoBitrate = 1_000_000,
+                customAudioBitrate = 128_000
+            )
+        )
+
+        assertEquals(1_410_000L, estimate.estimatedOutputSizeBytes)
+        assertNotNull(estimate.estimatedSavingsPercent)
+        assertTrue((estimate.estimatedSavingsPercent ?: 0f) > 0f)
+    }
+
+    @Test
     fun originalResolutionDoesNotUpscaleSmallVideo() {
         val config = CompressionPresetMapper.mapToEncodingConfig(
             videoInfo = videoInfo(width = 1280, height = 720, fps = 24f),

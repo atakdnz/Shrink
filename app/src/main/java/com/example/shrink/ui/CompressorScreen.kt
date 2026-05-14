@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.shrink.compression.AudioMode
+import com.example.shrink.compression.CompressionEstimate
 import com.example.shrink.compression.CompressedVideo
 import com.example.shrink.compression.CompressionFailureReason
 import com.example.shrink.compression.CompressionJobState
@@ -142,6 +143,7 @@ fun CompressorScreen(
                             state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
                             state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
                             item { SettingsSection(state.settings, onSettingsChange) }
+                            state.estimate?.let { item { EstimateSection(it) } }
                             item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
                             state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
                             state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
@@ -374,6 +376,28 @@ private fun AdvancedSettings(settings: CompressionSettings, onChange: (Compressi
             checked = settings.audioMode == AudioMode.REMOVE,
             onCheckedChange = { onChange(settings.copy(preset = CompressionPreset.CUSTOM, audioMode = if (it) AudioMode.REMOVE else AudioMode.KEEP)) }
         )
+    }
+}
+
+@Composable
+private fun EstimateSection(estimate: CompressionEstimate) {
+    Panel {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Estimate", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            ResultRow("Output size", estimate.estimatedOutputSizeBytes?.let { "~${formatBytes(it)}" } ?: "Unknown")
+            estimate.estimatedSavingsPercent?.let {
+                ResultRow("Expected change", if (it >= 0f) "~${formatPercent(it)} smaller" else "~${formatPercent(it)} larger")
+            }
+            ResultRow("Resolution", formatResolution(estimate.outputWidth, estimate.outputHeight))
+            ResultRow("Video bitrate", estimate.videoBitrate?.let { "${it / 1000} kbps" } ?: "Auto")
+            ResultRow("Audio", if (estimate.removeAudio) "Removed" else estimate.audioBitrate?.let { "${it / 1000} kbps" } ?: "Keep")
+            ResultRow("FPS cap", estimate.fps?.toString() ?: "Original")
+            Text(
+                "Approximate only. Actual size depends on the device encoder and source video.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary
+            )
+        }
     }
 }
 

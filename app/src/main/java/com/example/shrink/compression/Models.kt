@@ -86,6 +86,18 @@ data class EncodingConfig(
     val warning: String? = null
 )
 
+data class CompressionEstimate(
+    val outputWidth: Int?,
+    val outputHeight: Int?,
+    val videoBitrate: Int?,
+    val audioBitrate: Int?,
+    val fps: Int?,
+    val removeAudio: Boolean,
+    val estimatedOutputSizeBytes: Long?,
+    val estimatedSavingsPercent: Float?,
+    val warning: String?
+)
+
 data class CompressedVideo(
     val file: File,
     val contentUri: Uri,
@@ -108,6 +120,7 @@ sealed interface CompressionJobState {
 data class CompressorUiState(
     val selectedVideo: VideoInfo? = null,
     val settings: CompressionSettings = CompressionSettings.default(),
+    val estimate: CompressionEstimate? = null,
     val jobState: CompressionJobState = CompressionJobState.Idle,
     val output: CompressedVideo? = null,
     val launchedFromShareSheet: Boolean = false,
