@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Build
 import android.provider.MediaStore
+import com.example.shrink.metadata.Mp4DateMetadataWriter
 import java.io.File
 
 class MediaStoreSaver(private val context: Context) {
@@ -35,6 +36,7 @@ class MediaStoreSaver(private val context: Context) {
             }, null, null)
         }
         capturedAtMillis?.let {
+            Mp4DateMetadataWriter.writeCreationDate(file, it)
             file.setLastModified(it)
             resolver.update(uri, dateValues(it), null, null)
         }

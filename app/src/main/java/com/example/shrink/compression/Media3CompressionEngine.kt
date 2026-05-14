@@ -16,6 +16,7 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import com.example.shrink.metadata.Mp4DateMetadataWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -75,7 +76,10 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
                         )
                         return
                     }
-                    input.videoInfo.capturedAtMillis?.takeIf { keepSourceDate }?.let { final.setLastModified(it) }
+                    input.videoInfo.capturedAtMillis?.takeIf { keepSourceDate }?.let {
+                        Mp4DateMetadataWriter.writeCreationDate(final, it)
+                        final.setLastModified(it)
+                    }
                     val size = final.length()
                     val result = CompressionResult.Success(final, size, input.videoInfo.sizeBytes, null)
                     continuation.resume(result)

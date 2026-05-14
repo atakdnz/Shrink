@@ -14,6 +14,7 @@ import com.example.shrink.compression.CompressionResult
 import com.example.shrink.compression.CompressionSettings
 import com.example.shrink.compression.CompressorUiState
 import com.example.shrink.compression.OutputCodec
+import com.example.shrink.compression.OutputResolution
 import com.example.shrink.compression.VideoInfo
 import com.example.shrink.metadata.VideoMetadataReader
 import com.example.shrink.settings.AppPreferences
@@ -229,13 +230,27 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     private fun settingsFor(videoInfo: VideoInfo, currentSettings: CompressionSettings): CompressionSettings {
-        if (currentSettings != CompressionSettings.default()) return currentSettings
+        if (currentSettings != CompressionSettings.default()) return currentSettings.withSupportedResolution(videoInfo)
         val needsFpsCap = (videoInfo.fps ?: 0f) > 30f
         return CompressionSettings.default().copy(
             resolution = if (maxOf(videoInfo.width ?: 0, videoInfo.height ?: 0) > 1080) com.example.shrink.compression.OutputResolution.P1080 else com.example.shrink.compression.OutputResolution.ORIGINAL,
             fpsMode = if (needsFpsCap) com.example.shrink.compression.FpsMode.FPS_30 else com.example.shrink.compression.FpsMode.ORIGINAL,
             audioMode = AudioMode.KEEP
-        )
+        ).withSupportedResolution(videoInfo)
+    }
+
+    private fun CompressionSettings.withSupportedResolution(videoInfo: VideoInfo): CompressionSettings {
+        val sourceShortSide = listOfNotNull(videoInfo.width, videoInfo.height).minOrNull() ?: return this
+        val selectedShortSide = resolution.shortSideLimit() ?: return this
+        return if (selectedShortSide <= sourceShortSide) this else copy(resolution = OutputResolution.ORIGINAL)
+    }
+
+    private fun OutputResolution.shortSideLimit() = when (this) {
+        OutputResolution.ORIGINAL -> null
+        OutputResolution.P1080 -> 1080
+        OutputResolution.P720 -> 720
+        OutputResolution.P480 -> 480
+        OutputResolution.P360 -> 360
     }
 
     private fun compressionStartWarning(currentWarning: String?, notificationsEnabled: Boolean): String? {

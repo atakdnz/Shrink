@@ -144,7 +144,7 @@ fun CompressorScreen(
                             state.selectedVideo?.let { item { MetadataCard(it) } }
                             state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
                             state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
-                            item { SettingsSection(state.settings, onSettingsChange) }
+                            item { SettingsSection(state.settings, state.selectedVideo, onSettingsChange) }
                             state.estimate?.let { item { EstimateSection(it) } }
                             item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
                             state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
@@ -289,7 +289,7 @@ private fun MessageCard(message: String, tone: MessageTone) {
 }
 
 @Composable
-private fun SettingsSection(settings: CompressionSettings, onChange: (CompressionSettings) -> Unit) {
+private fun SettingsSection(settings: CompressionSettings, video: VideoInfo?, onChange: (CompressionSettings) -> Unit) {
     var advanced by remember { mutableStateOf(false) }
     Panel {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -300,7 +300,7 @@ private fun SettingsSection(settings: CompressionSettings, onChange: (Compressio
                 }
             }
             OptionGroup("Resolution") {
-                OutputResolution.entries.forEach {
+                availableResolutions(video).forEach {
                     SelectRow(it.label(), if (it == OutputResolution.ORIGINAL) "No resize" else "Max ${it.label()}", settings.resolution == it) {
                         onChange(settings.copy(resolution = it))
                     }
@@ -535,6 +535,21 @@ private fun OutputResolution.label() = when (this) {
     OutputResolution.P720 -> "720p"
     OutputResolution.P480 -> "480p"
     OutputResolution.P360 -> "360p"
+}
+
+private fun availableResolutions(video: VideoInfo?): List<OutputResolution> {
+    val sourceShortSide = listOfNotNull(video?.width, video?.height).minOrNull() ?: return OutputResolution.entries
+    return OutputResolution.entries.filter {
+        it == OutputResolution.ORIGINAL || (it.shortSideLimit() ?: Int.MAX_VALUE) <= sourceShortSide
+    }
+}
+
+private fun OutputResolution.shortSideLimit() = when (this) {
+    OutputResolution.ORIGINAL -> null
+    OutputResolution.P1080 -> 1080
+    OutputResolution.P720 -> 720
+    OutputResolution.P480 -> 480
+    OutputResolution.P360 -> 360
 }
 
 private fun FpsMode.label() = when (this) {
