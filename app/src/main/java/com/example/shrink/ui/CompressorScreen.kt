@@ -4,6 +4,8 @@ import android.widget.VideoView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,8 +44,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -68,6 +72,8 @@ import com.example.shrink.util.formatBytes
 import com.example.shrink.util.formatDuration
 import com.example.shrink.util.formatPercent
 import com.example.shrink.util.formatResolution
+import kotlin.math.abs
+import kotlin.math.hypot
 
 enum class AppPage { Compressor, Settings }
 
@@ -320,10 +326,10 @@ private fun VideoEditor(
     val duration = (video.durationMs ?: 0L).coerceAtLeast(0L)
     val timelineSegments = editorSegments(duration, adjustments.keptSegments)
 
-    fun update(next: VideoAdjustments) {
+    fun update(next: VideoAdjustments, selected: EditorSegment? = null) {
         undoStack = undoStack + adjustments
         adjustments = next.normalized(video.durationMs)
-        selectedSegment = null
+        selectedSegment = selected
     }
 
     Surface(
@@ -363,7 +369,10 @@ private fun VideoEditor(
                             if (!playing && it.isPlaying) it.pause()
                         }
                     )
-                    CropOverlay(adjustments.crop)
+                    CropOverlay(
+                        crop = adjustments.crop,
+                        onCropChange = { crop -> update(adjustments.copy(crop = crop.takeUnless { it.isEmpty() })) }
+                    )
                 }
             }
             item {
@@ -382,7 +391,12 @@ private fun VideoEditor(
                             durationMs = duration,
                             segments = timelineSegments,
                             selected = selectedSegment,
-                            playheadFraction = playhead
+                            playheadFraction = playhead,
+                            onSelect = { selectedSegment = it },
+                            onPlayheadChange = {
+                                playhead = it
+                                videoView?.seekTo((duration * it).toInt())
+                            }
                         )
                         Slider(
                             value = playhead,
@@ -427,24 +441,35 @@ private fun VideoEditor(
                                     if (splitAt > range.startMs && splitAt < range.endMs) {
                                         val next = adjustments.keptSegments.toMutableList()
                                         val index = next.indexOf(range)
-                                        next[index] = TimeRange(range.startMs, splitAt)
-                                        next.add(index + 1, TimeRange(splitAt, range.endMs))
-                                        update(adjustments.copy(keptSegments = next))
+                                        val left = TimeRange(range.startMs, splitAt)
+                                        val right = TimeRange(splitAt, range.endMs)
+                                        next[index] = left
+                                        next.add(index + 1, right)
+                                        update(
+                                            next = adjustments.copy(keptSegments = next),
+                                            selected = EditorSegment(right, deleted = false)
+                                        )
                                     }
                                 },
                                 modifier = Modifier.weight(1f)
                             ) { Text("Split at playhead") }
                             OutlinedButton(
                                 onClick = {
-                                    val selected = selectedSegment ?: return@OutlinedButton
+                                    val selected = selectedSegment ?: segmentAtPlayhead(timelineSegments, duration, playhead) ?: return@OutlinedButton
                                     if (selected.deleted) {
-                                        update(adjustments.copy(keptSegments = mergeRanges(adjustments.keptSegments + selected.range)))
+                                        update(
+                                            next = adjustments.copy(keptSegments = mergeRanges(adjustments.keptSegments + selected.range)),
+                                            selected = EditorSegment(selected.range, deleted = false)
+                                        )
                                     } else if (adjustments.keptSegments.size > 1) {
-                                        update(adjustments.copy(keptSegments = adjustments.keptSegments.filter { it != selected.range }))
+                                        update(
+                                            next = adjustments.copy(keptSegments = adjustments.keptSegments.filter { it != selected.range }),
+                                            selected = EditorSegment(selected.range, deleted = true)
+                                        )
                                     }
                                 },
                                 modifier = Modifier.weight(1f)
-                            ) { Text(if (selectedSegment?.deleted == true) "Restore segment" else "Delete segment") }
+                            ) { Text(if ((selectedSegment ?: segmentAtPlayhead(timelineSegments, duration, playhead))?.deleted == true) "Restore segment" else "Delete segment") }
                         }
                         OutlinedButton(
                             onClick = {
@@ -455,9 +480,14 @@ private fun VideoEditor(
                                 if (midpoint > range.startMs && midpoint < range.endMs) {
                                     val next = adjustments.keptSegments.toMutableList()
                                     val index = next.indexOf(range)
-                                    next[index] = TimeRange(range.startMs, midpoint)
-                                    next.add(index + 1, TimeRange(midpoint, range.endMs))
-                                    update(adjustments.copy(keptSegments = next))
+                                    val left = TimeRange(range.startMs, midpoint)
+                                    val right = TimeRange(midpoint, range.endMs)
+                                    next[index] = left
+                                    next.add(index + 1, right)
+                                    update(
+                                        next = adjustments.copy(keptSegments = next),
+                                        selected = EditorSegment(right, deleted = false)
+                                    )
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -467,6 +497,7 @@ private fun VideoEditor(
                                 val previous = undoStack.lastOrNull() ?: return@OutlinedButton
                                 undoStack = undoStack.dropLast(1)
                                 adjustments = previous
+                                selectedSegment = null
                             },
                             enabled = undoStack.isNotEmpty(),
                             modifier = Modifier.fillMaxWidth()
@@ -480,9 +511,20 @@ private fun VideoEditor(
                         Text("Frame", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                             OutlinedButton(
-                                onClick = { update(adjustments.copy(rotationDegrees = (adjustments.rotationDegrees + 90) % 360)) },
+                                onClick = { update(adjustments.copy(rotationDegrees = 90)) },
                                 modifier = Modifier.weight(1f)
-                            ) { Text("Rotate") }
+                            ) { Text("90") }
+                            OutlinedButton(
+                                onClick = { update(adjustments.copy(rotationDegrees = 180)) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("180") }
+                            OutlinedButton(
+                                onClick = { update(adjustments.copy(rotationDegrees = 270)) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("270") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { update(adjustments.copy(rotationDegrees = 0)) }, modifier = Modifier.weight(1f)) { Text("Reset rotate") }
                             OutlinedButton(onClick = { update(adjustments.copy(crop = null)) }, modifier = Modifier.weight(1f)) { Text("Clear crop") }
                         }
                         ResultRow("Rotation", "${adjustments.rotationDegrees} deg")
@@ -498,18 +540,42 @@ private fun VideoEditor(
 }
 
 private data class EditorSegment(val range: TimeRange, val deleted: Boolean)
+private enum class CropHandle { TopLeft, TopRight, BottomLeft, BottomRight }
+
+private fun DrawScope.drawSegmentBoundary(x: Float) {
+    drawLine(
+        color = Color.White.copy(alpha = 0.9f),
+        start = androidx.compose.ui.geometry.Offset(x, 2.dp.toPx()),
+        end = androidx.compose.ui.geometry.Offset(x, size.height - 2.dp.toPx()),
+        strokeWidth = 1.5.dp.toPx()
+    )
+}
 
 @Composable
 private fun TimelineBar(
     durationMs: Long,
     segments: List<EditorSegment>,
     selected: EditorSegment?,
-    playheadFraction: Float
+    playheadFraction: Float,
+    onSelect: (EditorSegment) -> Unit,
+    onPlayheadChange: (Float) -> Unit
 ) {
     val keepColor = MaterialTheme.colorScheme.primary
     val deleteColor = MaterialTheme.colorScheme.error
     val selectedColor = MaterialTheme.colorScheme.onPrimaryContainer
-    Canvas(Modifier.fillMaxWidth().height(34.dp)) {
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(38.dp)
+            .pointerInput(segments, durationMs) {
+                detectTapGestures { offset ->
+                    val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                    onPlayheadChange(fraction)
+                    val positionMs = (durationMs * fraction).toLong()
+                    segmentAtMs(segments, positionMs)?.let(onSelect)
+                }
+            }
+    ) {
         val radius = 8.dp.toPx()
         segments.forEach { segment ->
             val left = if (durationMs > 0) size.width * segment.range.startMs / durationMs else 0f
@@ -520,6 +586,8 @@ private fun TimelineBar(
                 size = androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(2f), size.height - 8.dp.toPx()),
                 cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
             )
+            drawSegmentBoundary(left)
+            drawSegmentBoundary(right)
             if (segment == selected) {
                 drawRoundRect(
                     color = selectedColor,
@@ -536,14 +604,31 @@ private fun TimelineBar(
 }
 
 @Composable
-private fun CropOverlay(crop: CropRect?) {
+private fun CropOverlay(crop: CropRect?, onCropChange: (CropRect) -> Unit) {
     val rect = crop ?: CropRect(0f, 0f, 0f, 0f)
-    Canvas(Modifier.fillMaxSize()) {
+    var activeHandle by remember { mutableStateOf<CropHandle?>(null) }
+    Canvas(
+        Modifier
+            .fillMaxSize()
+            .pointerInput(rect) {
+                detectDragGestures(
+                    onDragStart = { offset -> activeHandle = nearestCropHandle(offset, size.width.toFloat(), size.height.toFloat(), rect) },
+                    onDragEnd = { activeHandle = null },
+                    onDragCancel = { activeHandle = null },
+                    onDrag = { change, _ ->
+                        val handle = activeHandle ?: return@detectDragGestures
+                        change.consume()
+                        onCropChange(cropForHandle(handle, change.position.x, change.position.y, size.width.toFloat(), size.height.toFloat(), rect))
+                    }
+                )
+            }
+    ) {
         val left = size.width * rect.leftFraction
         val top = size.height * rect.topFraction
         val right = size.width * (1f - rect.rightFraction)
         val bottom = size.height * (1f - rect.bottomFraction)
         val color = Color.White
+        drawRect(Color.Black.copy(alpha = 0.34f))
         drawRect(color.copy(alpha = 0.55f), androidx.compose.ui.geometry.Offset(left, top), androidx.compose.ui.geometry.Size(right - left, bottom - top), style = Stroke(width = 2.dp.toPx()))
         drawLine(color, androidx.compose.ui.geometry.Offset(left, top), androidx.compose.ui.geometry.Offset(left + 28.dp.toPx(), top + 28.dp.toPx()), strokeWidth = 3.dp.toPx())
         drawLine(color, androidx.compose.ui.geometry.Offset(right, top), androidx.compose.ui.geometry.Offset(right - 28.dp.toPx(), top + 28.dp.toPx()), strokeWidth = 3.dp.toPx())
@@ -572,6 +657,56 @@ private fun CropControls(crop: CropRect, onChange: (CropRect) -> Unit) {
         Text("Bottom ${(crop.bottomFraction * 100).toInt()}%", color = MaterialTheme.colorScheme.secondary)
         Slider(crop.bottomFraction, { onChange(bounded(bottom = it)) }, valueRange = 0f..0.45f)
     }
+}
+
+private fun nearestCropHandle(
+    offset: androidx.compose.ui.geometry.Offset,
+    width: Float,
+    height: Float,
+    crop: CropRect
+): CropHandle {
+    val left = width * crop.leftFraction
+    val top = height * crop.topFraction
+    val right = width * (1f - crop.rightFraction)
+    val bottom = height * (1f - crop.bottomFraction)
+    return listOf(
+        CropHandle.TopLeft to hypot(offset.x - left, offset.y - top),
+        CropHandle.TopRight to hypot(offset.x - right, offset.y - top),
+        CropHandle.BottomLeft to hypot(offset.x - left, offset.y - bottom),
+        CropHandle.BottomRight to hypot(offset.x - right, offset.y - bottom)
+    ).minBy { it.second }.first
+}
+
+private fun cropForHandle(
+    handle: CropHandle,
+    x: Float,
+    y: Float,
+    width: Float,
+    height: Float,
+    crop: CropRect
+): CropRect {
+    val left = crop.leftFraction
+    val top = crop.topFraction
+    val right = crop.rightFraction
+    val bottom = crop.bottomFraction
+    val nextLeft = (x / width).coerceIn(0f, 0.85f)
+    val nextTop = (y / height).coerceIn(0f, 0.85f)
+    val nextRight = (1f - (x / width)).coerceIn(0f, 0.85f)
+    val nextBottom = (1f - (y / height)).coerceIn(0f, 0.85f)
+    return when (handle) {
+        CropHandle.TopLeft -> boundedCrop(nextLeft, nextTop, right, bottom)
+        CropHandle.TopRight -> boundedCrop(left, nextTop, nextRight, bottom)
+        CropHandle.BottomLeft -> boundedCrop(nextLeft, top, right, nextBottom)
+        CropHandle.BottomRight -> boundedCrop(left, top, nextRight, nextBottom)
+    }
+}
+
+private fun boundedCrop(left: Float, top: Float, right: Float, bottom: Float): CropRect {
+    val safeLeft = left.coerceIn(0f, 0.85f)
+    val safeRight = right.coerceIn(0f, 0.85f).coerceAtMost(0.9f - safeLeft)
+    val safeTop = top.coerceIn(0f, 0.85f)
+    val safeBottom = bottom.coerceIn(0f, 0.85f).coerceAtMost(0.9f - safeTop)
+    return CropRect(safeLeft, safeTop, safeRight, safeBottom)
 }
 
 @Composable
@@ -895,6 +1030,12 @@ private fun editorSegments(durationMs: Long, keptSegments: List<TimeRange>): Lis
     if (cursor < durationMs) result += EditorSegment(TimeRange(cursor, durationMs), deleted = true)
     return result.filter { it.range.endMs > it.range.startMs }
 }
+
+private fun segmentAtPlayhead(segments: List<EditorSegment>, durationMs: Long, playheadFraction: Float): EditorSegment? =
+    segmentAtMs(segments, (durationMs * playheadFraction.coerceIn(0f, 1f)).toLong())
+
+private fun segmentAtMs(segments: List<EditorSegment>, positionMs: Long): EditorSegment? =
+    segments.firstOrNull { positionMs >= it.range.startMs && positionMs <= it.range.endMs }
 
 private fun mergeRanges(ranges: List<TimeRange>): List<TimeRange> {
     val sorted = ranges.filter { it.endMs > it.startMs }.sortedBy { it.startMs }
