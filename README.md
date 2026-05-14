@@ -62,3 +62,6 @@ app/build/outputs/apk/debug/app-debug.apk
 - No trimming, cropping, watermarking, subtitles, social presets, analytics, ads, accounts, or cloud upload.
 - Device validation is still needed for real-world video edge cases such as HDR, portrait rotation, iPhone MOV, Samsung HEVC, 4K60, and long background compression.
 
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
