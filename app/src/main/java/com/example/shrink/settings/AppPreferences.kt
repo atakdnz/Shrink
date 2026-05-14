@@ -25,6 +25,10 @@ data class AppearancePreferences(
     val accentName: String = "Purple"
 )
 
+data class GeneralPreferences(
+    val keepSourceDate: Boolean = true
+)
+
 class AppPreferences(context: Context) {
     private val dataStore = context.applicationContext.appDataStore
 
@@ -56,6 +60,16 @@ class AppPreferences(context: Context) {
             )
         }
 
+    val general: Flow<GeneralPreferences> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) emit(androidx.datastore.preferences.core.emptyPreferences()) else throw exception
+        }
+        .map { preferences ->
+            GeneralPreferences(
+                keepSourceDate = preferences[KEEP_SOURCE_DATE] ?: true
+            )
+        }
+
     suspend fun saveAppearance(preferences: AppearancePreferences) {
         dataStore.edit {
             it[DARK_MODE] = preferences.darkMode
@@ -73,6 +87,12 @@ class AppPreferences(context: Context) {
             setOptionalLong(it, TARGET_SIZE, settings.targetSizeBytes)
             setOptionalInt(it, VIDEO_BITRATE, settings.customVideoBitrate)
             setOptionalInt(it, AUDIO_BITRATE, settings.customAudioBitrate)
+        }
+    }
+
+    suspend fun saveGeneral(preferences: GeneralPreferences) {
+        dataStore.edit {
+            it[KEEP_SOURCE_DATE] = preferences.keepSourceDate
         }
     }
 
@@ -98,6 +118,7 @@ class AppPreferences(context: Context) {
     private companion object {
         val DARK_MODE = booleanPreferencesKey("dark_mode")
         val ACCENT_NAME = stringPreferencesKey("accent_name")
+        val KEEP_SOURCE_DATE = booleanPreferencesKey("keep_source_date")
         val PRESET = stringPreferencesKey("preset")
         val RESOLUTION = stringPreferencesKey("resolution")
         val CODEC = stringPreferencesKey("codec")

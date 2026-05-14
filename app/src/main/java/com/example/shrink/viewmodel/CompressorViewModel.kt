@@ -17,6 +17,7 @@ import com.example.shrink.compression.OutputCodec
 import com.example.shrink.compression.VideoInfo
 import com.example.shrink.metadata.VideoMetadataReader
 import com.example.shrink.settings.AppPreferences
+import com.example.shrink.settings.GeneralPreferences
 import com.example.shrink.service.CompressionEvent
 import com.example.shrink.service.CompressionEventBus
 import com.example.shrink.service.CompressionForegroundService
@@ -47,6 +48,11 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             appPreferences.compressionSettings.collect { settings ->
                 _uiState.update { it.copy(settings = settings) }
+            }
+        }
+        viewModelScope.launch {
+            appPreferences.general.collect { preferences ->
+                _uiState.update { it.copy(keepSourceDate = preferences.keepSourceDate) }
             }
         }
     }
@@ -101,6 +107,13 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.update { it.copy(notificationsEnabled = enabled) }
     }
 
+    fun setKeepSourceDate(enabled: Boolean) {
+        _uiState.update { it.copy(keepSourceDate = enabled) }
+        viewModelScope.launch {
+            appPreferences.saveGeneral(GeneralPreferences(keepSourceDate = enabled))
+        }
+    }
+
     fun compress() {
         val video = _uiState.value.selectedVideo ?: return
         if (!outputFileManager.hasWorkingSpaceFor(video.sizeBytes)) {
@@ -114,7 +127,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
         val settings = _uiState.value.settings
         val managed = outputFileManager.createOutput(video.displayName)
-        val request = ServiceCompressionRequest(video, settings, managed.tempFile, managed.finalFile)
+        val request = ServiceCompressionRequest(video, settings, managed.tempFile, managed.finalFile, _uiState.value.keepSourceDate)
         _uiState.update {
             it.copy(
                 jobState = CompressionJobState.Preparing,
@@ -155,7 +168,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun saveToMovies() {
         val file = _uiState.value.output?.file ?: return
-        val capturedAtMillis = _uiState.value.selectedVideo?.capturedAtMillis
+        val capturedAtMillis = _uiState.value.selectedVideo?.capturedAtMillis?.takeIf { _uiState.value.keepSourceDate }
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { mediaStoreSaver.save(file, capturedAtMillis) }
             _uiState.update {

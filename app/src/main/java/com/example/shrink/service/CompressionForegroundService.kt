@@ -75,7 +75,8 @@ class CompressionForegroundService : Service() {
             val result = activeEngine.compress(
                 input = CompressionInput(request.videoInfo.uri, request.videoInfo),
                 settings = request.settings,
-                output = CompressionOutput(request.tempFile, request.finalFile)
+                output = CompressionOutput(request.tempFile, request.finalFile),
+                keepSourceDate = request.keepSourceDate
             ) { progress ->
                 CompressionEventBus.emit(CompressionEvent.Progress(progress))
                 updateNotification((progress.percent * 100).toInt())
@@ -157,7 +158,8 @@ data class ServiceCompressionRequest(
     val videoInfo: VideoInfo,
     val settings: CompressionSettings,
     val tempFile: File,
-    val finalFile: File
+    val finalFile: File,
+    val keepSourceDate: Boolean
 )
 
 private fun Intent.putCompressionRequest(request: ServiceCompressionRequest): Intent = apply {
@@ -183,6 +185,7 @@ private fun Intent.putCompressionRequest(request: ServiceCompressionRequest): In
     putExtra(EXTRA_TARGET_SIZE, request.settings.targetSizeBytes ?: -1L)
     putExtra(EXTRA_VIDEO_BITRATE, request.settings.customVideoBitrate ?: -1)
     putExtra(EXTRA_AUDIO_BITRATE, request.settings.customAudioBitrate ?: -1)
+    putExtra(EXTRA_KEEP_SOURCE_DATE, request.keepSourceDate)
     putExtra(EXTRA_TEMP_FILE, request.tempFile.absolutePath)
     putExtra(EXTRA_FINAL_FILE, request.finalFile.absolutePath)
 }
@@ -221,7 +224,13 @@ private fun Intent.toCompressionRequest(): ServiceCompressionRequest? {
         customVideoBitrate = getIntExtra(EXTRA_VIDEO_BITRATE, -1).takeIf { it > 0 },
         customAudioBitrate = getIntExtra(EXTRA_AUDIO_BITRATE, -1).takeIf { it > 0 }
     )
-    return ServiceCompressionRequest(videoInfo, settings, File(tempPath), File(finalPath))
+    return ServiceCompressionRequest(
+        videoInfo = videoInfo,
+        settings = settings,
+        tempFile = File(tempPath),
+        finalFile = File(finalPath),
+        keepSourceDate = getBooleanExtra(EXTRA_KEEP_SOURCE_DATE, true)
+    )
 }
 
 private inline fun <reified T : Enum<T>> Intent.enumExtra(key: String, fallback: T): T =
@@ -249,5 +258,6 @@ private const val EXTRA_AUDIO_MODE = "audio_mode"
 private const val EXTRA_TARGET_SIZE = "target_size"
 private const val EXTRA_VIDEO_BITRATE = "video_bitrate"
 private const val EXTRA_AUDIO_BITRATE = "audio_bitrate"
+private const val EXTRA_KEEP_SOURCE_DATE = "keep_source_date"
 private const val EXTRA_TEMP_FILE = "temp_file"
 private const val EXTRA_FINAL_FILE = "final_file"

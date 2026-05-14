@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.example.shrink.settings.AppPreferences
 import com.example.shrink.settings.AppearancePreferences
+import com.example.shrink.settings.GeneralPreferences
 import com.example.shrink.share.ShareIntentHandler
 import com.example.shrink.ui.AppAccent
 import com.example.shrink.ui.AppPage
@@ -38,6 +39,7 @@ class MainActivity : ComponentActivity() {
             val state by viewModel.uiState.collectAsState()
             val appPreferences = remember { AppPreferences(applicationContext) }
             val appearance by appPreferences.appearance.collectAsState(AppearancePreferences())
+            val general by appPreferences.general.collectAsState(GeneralPreferences())
             val scope = rememberCoroutineScope()
             var page by rememberSaveable { mutableStateOf(AppPage.Compressor) }
             val accent = runCatching { enumValueOf<AppAccent>(appearance.accentName) }.getOrDefault(AppAccent.Purple)
@@ -79,6 +81,8 @@ class MainActivity : ComponentActivity() {
                 onAccentChange = { selectedAccent ->
                     scope.launch { appPreferences.saveAppearance(appearance.copy(accentName = selectedAccent.name)) }
                 },
+                keepSourceDate = general.keepSourceDate,
+                onKeepSourceDateChange = viewModel::setKeepSourceDate,
                 onPickVideo = {
                     if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(this)) {
                         picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))

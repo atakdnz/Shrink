@@ -111,6 +111,8 @@ fun CompressorScreen(
     onDarkModeChange: (Boolean) -> Unit,
     accent: AppAccent,
     onAccentChange: (AppAccent) -> Unit,
+    keepSourceDate: Boolean,
+    onKeepSourceDateChange: (Boolean) -> Unit,
     onPickVideo: () -> Unit,
     onSettingsChange: (CompressionSettings) -> Unit,
     onCompress: () -> Unit,
@@ -130,7 +132,7 @@ fun CompressorScreen(
             ) {
                 item { Header(page, onPageChange) }
                 if (page == AppPage.Settings) {
-                    item { AppearanceSettings(darkMode, onDarkModeChange, accent, onAccentChange) }
+                    item { AppSettings(darkMode, onDarkModeChange, accent, onAccentChange, keepSourceDate, onKeepSourceDateChange) }
                 } else {
                     when {
                         state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
@@ -187,6 +189,31 @@ private fun AppearanceSettings(
                     detail = if (it == AppAccent.Purple) "Default" else "Accent",
                     selected = it == accent,
                     onClick = { onAccentChange(it) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppSettings(
+    darkMode: Boolean,
+    onDarkModeChange: (Boolean) -> Unit,
+    accent: AppAccent,
+    onAccentChange: (AppAccent) -> Unit,
+    keepSourceDate: Boolean,
+    onKeepSourceDateChange: (Boolean) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        AppearanceSettings(darkMode, onDarkModeChange, accent, onAccentChange)
+        Panel {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Output", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                ToggleRow(
+                    title = "Keep source date",
+                    detail = "Save compressed videos with the original video date when available",
+                    checked = keepSourceDate,
+                    onCheckedChange = onKeepSourceDateChange
                 )
             }
         }

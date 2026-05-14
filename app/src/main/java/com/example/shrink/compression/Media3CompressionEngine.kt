@@ -32,6 +32,7 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
         input: CompressionInput,
         settings: CompressionSettings,
         output: CompressionOutput,
+        keepSourceDate: Boolean,
         progress: suspend (CompressionProgress) -> Unit
     ): CompressionResult = withContext(Dispatchers.Main) {
         val config = CompressionPresetMapper.mapToEncodingConfig(input.videoInfo, settings)
@@ -74,7 +75,7 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
                         )
                         return
                     }
-                    input.videoInfo.capturedAtMillis?.let { final.setLastModified(it) }
+                    input.videoInfo.capturedAtMillis?.takeIf { keepSourceDate }?.let { final.setLastModified(it) }
                     val size = final.length()
                     val result = CompressionResult.Success(final, size, input.videoInfo.sizeBytes, null)
                     continuation.resume(result)

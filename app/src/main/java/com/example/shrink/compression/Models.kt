@@ -125,6 +125,7 @@ data class CompressorUiState(
     val jobState: CompressionJobState = CompressionJobState.Idle,
     val output: CompressedVideo? = null,
     val launchedFromShareSheet: Boolean = false,
+    val keepSourceDate: Boolean = true,
     val notificationsEnabled: Boolean = true,
     val errorMessage: String? = null,
     val warningMessage: String? = null,
