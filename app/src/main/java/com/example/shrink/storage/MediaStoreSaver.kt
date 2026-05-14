@@ -31,15 +31,22 @@ class MediaStoreSaver(private val context: Context) {
         } ?: error("Could not open MediaStore output")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             resolver.update(uri, ContentValues().apply {
-                capturedAtMillis?.let {
-                    put(MediaStore.Video.Media.DATE_TAKEN, it)
-                    put(MediaStore.MediaColumns.DATE_MODIFIED, it / 1000L)
-                }
                 put(MediaStore.Video.Media.IS_PENDING, 0)
             }, null, null)
         }
+        capturedAtMillis?.let {
+            file.setLastModified(it)
+            resolver.update(uri, dateValues(it), null, null)
+        }
+        Unit
         }.onFailure {
             uri?.let { resolver.delete(it, null, null) }
         }
+    }
+
+    private fun dateValues(capturedAtMillis: Long) = ContentValues().apply {
+        put(MediaStore.Video.Media.DATE_TAKEN, capturedAtMillis)
+        put(MediaStore.MediaColumns.DATE_MODIFIED, capturedAtMillis / 1000L)
+        put(MediaStore.MediaColumns.DATE_ADDED, capturedAtMillis / 1000L)
     }
 }

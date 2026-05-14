@@ -6,6 +6,7 @@ import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.provider.DocumentsContract
 import android.provider.OpenableColumns
 import android.provider.MediaStore
 import com.example.shrink.compression.VideoInfo
@@ -24,7 +25,7 @@ class VideoMetadataReader(private val context: Context) {
         var height: Int? = null
         var rotation: Int? = null
         var isHdr: Boolean? = null
-        var capturedAtMillis: Long? = queryMediaDateMillis(resolver, uri)
+        var capturedAtMillis: Long? = queryMediaDateMillis(resolver, uri) ?: queryDocumentDateMillis(resolver, uri)
         try {
             retriever.setDataSource(context, uri)
             duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
@@ -98,15 +99,34 @@ class VideoMetadataReader(private val context: Context) {
         }.getOrNull()
     }
 
+    private fun queryDocumentDateMillis(resolver: ContentResolver, uri: Uri): Long? =
+        runCatching {
+            resolver.query(uri, arrayOf(DocumentsContract.Document.COLUMN_LAST_MODIFIED), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.longOrNull(0)?.takeIf { it > 0L } else null
+            }
+        }.getOrNull()
+
     private fun android.database.Cursor.longOrNull(index: Int): Long? =
         if (index >= 0 && !isNull(index)) getLong(index) else null
 
     private fun parseRetrieverDate(value: String?): Long? {
         if (value.isNullOrBlank()) return null
-        val parser = SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS'Z'", Locale.US).apply {
-            timeZone = TimeZone.getTimeZone("UTC")
+        val patterns = listOf(
+            "yyyyMMdd'T'HHmmss.SSS'Z'",
+            "yyyyMMdd'T'HHmmss'Z'",
+            "yyyyMMdd'T'HHmmss.SSSZ",
+            "yyyyMMdd'T'HHmmssZ",
+            "yyyy:MM:dd HH:mm:ss"
+        )
+        patterns.forEach { pattern ->
+            val parsed = runCatching {
+                SimpleDateFormat(pattern, Locale.US).apply {
+                    if (pattern.endsWith("'Z'")) timeZone = TimeZone.getTimeZone("UTC")
+                }.parse(value)?.time
+            }.getOrNull()
+            if (parsed != null) return parsed
         }
-        return runCatching { parser.parse(value)?.time }.getOrNull()
+        return null
     }
 
     private fun readTrackInfo(uri: Uri): TrackInfo {
