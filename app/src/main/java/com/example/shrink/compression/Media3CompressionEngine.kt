@@ -5,11 +5,15 @@ import android.media.MediaCodecList
 import android.media.MediaFormat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.Crop
 import androidx.media3.effect.FrameDropEffect
 import androidx.media3.effect.Presentation
+import androidx.media3.effect.ScaleAndRotateTransformation
+import androidx.media3.transformer.Composition
 import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
+import androidx.media3.transformer.EditedMediaItemSequence
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
@@ -32,11 +36,13 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
     override suspend fun compress(
         input: CompressionInput,
         settings: CompressionSettings,
+        adjustments: VideoAdjustments,
         output: CompressionOutput,
         keepSourceDate: Boolean,
         progress: suspend (CompressionProgress) -> Unit
     ): CompressionResult = withContext(Dispatchers.Main) {
-        val config = CompressionPresetMapper.mapToEncodingConfig(input.videoInfo, settings)
+        val normalizedAdjustments = adjustments.normalized(input.videoInfo.durationMs)
+        val config = CompressionPresetMapper.mapToEncodingConfig(input.videoInfo, settings, normalizedAdjustments)
         if (settings.codec == OutputCodec.H265_HEVC && !hasEncoder(config.videoMimeType)) {
             return@withContext CompressionResult.Failure(
                 CompressionFailureReason.H265_UNAVAILABLE,
@@ -102,10 +108,7 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
                 }
             }
             val encoderFactory = buildEncoderFactory(config)
-            val mediaItemBuilder = EditedMediaItem.Builder(MediaItem.fromUri(input.uri))
-                .setRemoveAudio(config.removeAudio)
-            val effects = buildEffects(config)
-            if (effects != null) mediaItemBuilder.setEffects(effects)
+            val editedItems = buildEditedItems(input, config, normalizedAdjustments)
             val activeTransformer = Transformer.Builder(context)
                 .setVideoMimeType(config.videoMimeType)
                 .setPortraitEncodingEnabled(true)
@@ -118,7 +121,12 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
                 activeTransformer.cancel()
                 output.tempFile.delete()
             }
-            activeTransformer.start(mediaItemBuilder.build(), output.tempFile.absolutePath)
+            if (editedItems.size == 1) {
+                activeTransformer.start(editedItems.first(), output.tempFile.absolutePath)
+            } else {
+                val sequence = EditedMediaItemSequence.Builder(editedItems).build()
+                activeTransformer.start(Composition.Builder(sequence).build(), output.tempFile.absolutePath)
+            }
             progressJob = pollProgress(activeTransformer, progress)
         }
     }
@@ -148,8 +156,58 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
         }
     }
 
-    private fun buildEffects(config: EncodingConfig): Effects? {
+    private fun buildEditedItems(
+        input: CompressionInput,
+        config: EncodingConfig,
+        adjustments: VideoAdjustments
+    ): List<EditedMediaItem> {
+        val segments = adjustments.keptSegments.ifEmpty {
+            input.videoInfo.durationMs?.takeIf { it > 0L }?.let { listOf(TimeRange(0L, it)) }.orEmpty()
+        }
+        val effects = buildEffects(config, adjustments)
+        if (segments.isEmpty()) {
+            return listOf(
+                EditedMediaItem.Builder(MediaItem.fromUri(input.uri))
+                    .setRemoveAudio(config.removeAudio)
+                    .apply { if (effects != null) setEffects(effects) }
+                    .build()
+            )
+        }
+        return segments.map { segment ->
+            val mediaItem = clippedMediaItem(input.uri, segment)
+            EditedMediaItem.Builder(mediaItem)
+                .setRemoveAudio(config.removeAudio)
+                .apply { if (effects != null) setEffects(effects) }
+                .build()
+        }
+    }
+
+    private fun clippedMediaItem(uri: android.net.Uri, segment: TimeRange): MediaItem =
+        MediaItem.Builder()
+            .setUri(uri)
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(segment.startMs)
+                    .setEndPositionMs(segment.endMs)
+                    .build()
+            )
+            .build()
+
+    private fun buildEffects(config: EncodingConfig, adjustments: VideoAdjustments): Effects? {
         val videoEffects = mutableListOf<androidx.media3.common.Effect>()
+        adjustments.crop?.let {
+            videoEffects += Crop(
+                -1f + (2f * it.leftFraction),
+                1f - (2f * it.rightFraction),
+                -1f + (2f * it.bottomFraction),
+                1f - (2f * it.topFraction)
+            )
+        }
+        if (adjustments.rotationDegrees != 0) {
+            videoEffects += ScaleAndRotateTransformation.Builder()
+                .setRotationDegrees(adjustments.rotationDegrees.toFloat())
+                .build()
+        }
         config.fps?.let { videoEffects += FrameDropEffect.createDefaultFrameDropEffect(it.toFloat()) }
         if (config.outputWidth != null && config.outputHeight != null) {
             videoEffects += Presentation.createForWidthAndHeight(

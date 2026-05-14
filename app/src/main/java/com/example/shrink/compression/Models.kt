@@ -34,6 +34,65 @@ data class CompressionSettings(
     }
 }
 
+data class VideoAdjustments(
+    val keptSegments: List<TimeRange> = emptyList(),
+    val crop: CropRect? = null,
+    val rotationDegrees: Int = 0
+) {
+    fun normalized(sourceDurationMs: Long?): VideoAdjustments {
+        val duration = sourceDurationMs?.takeIf { it > 0L }
+        val segments = if (keptSegments.isEmpty()) {
+            duration?.let { listOf(TimeRange(0L, it)) }.orEmpty()
+        } else {
+            keptSegments
+        }.mapNotNull { range ->
+            val start = range.startMs.coerceAtLeast(0L)
+            val end = duration?.let { range.endMs.coerceAtMost(it) } ?: range.endMs
+            if (end > start) TimeRange(start, end) else null
+        }.sortedBy { it.startMs }
+        return copy(
+            keptSegments = segments,
+            rotationDegrees = ((rotationDegrees % 360) + 360) % 360
+        )
+    }
+
+    fun adjustedDurationMs(sourceDurationMs: Long?): Long? {
+        val normalized = normalized(sourceDurationMs)
+        return normalized.keptSegments.takeIf { it.isNotEmpty() }?.sumOf { it.endMs - it.startMs } ?: sourceDurationMs
+    }
+
+    fun hasEdits(sourceDurationMs: Long?): Boolean {
+        val normalized = normalized(sourceDurationMs)
+        val duration = sourceDurationMs?.takeIf { it > 0L }
+        val fullRange = duration?.let { listOf(TimeRange(0L, it)) }.orEmpty()
+        return normalized.crop != null || normalized.rotationDegrees != 0 || (duration != null && normalized.keptSegments != fullRange)
+    }
+
+    companion object {
+        fun fullLength(durationMs: Long?) = VideoAdjustments(
+            keptSegments = durationMs?.takeIf { it > 0L }?.let { listOf(TimeRange(0L, it)) }.orEmpty()
+        )
+    }
+}
+
+data class TimeRange(val startMs: Long, val endMs: Long)
+
+data class CropRect(
+    val leftFraction: Float,
+    val topFraction: Float,
+    val rightFraction: Float,
+    val bottomFraction: Float
+) {
+    init {
+        require(leftFraction in 0f..1f)
+        require(topFraction in 0f..1f)
+        require(rightFraction in 0f..1f)
+        require(bottomFraction in 0f..1f)
+        require(leftFraction + rightFraction < 1f)
+        require(topFraction + bottomFraction < 1f)
+    }
+}
+
 enum class CompressionPreset { HIGH, BALANCED, SMALL, TINY, CUSTOM }
 enum class OutputCodec { H265_HEVC, H264_AVC }
 enum class OutputResolution { ORIGINAL, P1080, P720, P480, P360 }
@@ -120,6 +179,7 @@ sealed interface CompressionJobState {
 
 data class CompressorUiState(
     val selectedVideo: VideoInfo? = null,
+    val adjustments: VideoAdjustments = VideoAdjustments(),
     val settings: CompressionSettings = CompressionSettings.default(),
     val estimate: CompressionEstimate? = null,
     val jobState: CompressionJobState = CompressionJobState.Idle,

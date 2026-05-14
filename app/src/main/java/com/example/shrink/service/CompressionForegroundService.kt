@@ -20,10 +20,13 @@ import com.example.shrink.compression.CompressionOutput
 import com.example.shrink.compression.CompressionPreset
 import com.example.shrink.compression.CompressionResult
 import com.example.shrink.compression.CompressionSettings
+import com.example.shrink.compression.CropRect
 import com.example.shrink.compression.FpsMode
 import com.example.shrink.compression.Media3CompressionEngine
 import com.example.shrink.compression.OutputCodec
 import com.example.shrink.compression.OutputResolution
+import com.example.shrink.compression.TimeRange
+import com.example.shrink.compression.VideoAdjustments
 import com.example.shrink.compression.VideoInfo
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -75,6 +78,7 @@ class CompressionForegroundService : Service() {
             val result = activeEngine.compress(
                 input = CompressionInput(request.videoInfo.uri, request.videoInfo),
                 settings = request.settings,
+                adjustments = request.adjustments,
                 output = CompressionOutput(request.tempFile, request.finalFile),
                 keepSourceDate = request.keepSourceDate
             ) { progress ->
@@ -157,6 +161,7 @@ class CompressionForegroundService : Service() {
 data class ServiceCompressionRequest(
     val videoInfo: VideoInfo,
     val settings: CompressionSettings,
+    val adjustments: VideoAdjustments,
     val tempFile: File,
     val finalFile: File,
     val keepSourceDate: Boolean
@@ -185,6 +190,13 @@ private fun Intent.putCompressionRequest(request: ServiceCompressionRequest): In
     putExtra(EXTRA_TARGET_SIZE, request.settings.targetSizeBytes ?: -1L)
     putExtra(EXTRA_VIDEO_BITRATE, request.settings.customVideoBitrate ?: -1)
     putExtra(EXTRA_AUDIO_BITRATE, request.settings.customAudioBitrate ?: -1)
+    putExtra(EXTRA_SEGMENT_STARTS, request.adjustments.keptSegments.map { it.startMs }.toLongArray())
+    putExtra(EXTRA_SEGMENT_ENDS, request.adjustments.keptSegments.map { it.endMs }.toLongArray())
+    putExtra(EXTRA_CROP_LEFT, request.adjustments.crop?.leftFraction ?: -1f)
+    putExtra(EXTRA_CROP_TOP, request.adjustments.crop?.topFraction ?: -1f)
+    putExtra(EXTRA_CROP_RIGHT, request.adjustments.crop?.rightFraction ?: -1f)
+    putExtra(EXTRA_CROP_BOTTOM, request.adjustments.crop?.bottomFraction ?: -1f)
+    putExtra(EXTRA_ADJUSTMENT_ROTATION, request.adjustments.rotationDegrees)
     putExtra(EXTRA_KEEP_SOURCE_DATE, request.keepSourceDate)
     putExtra(EXTRA_TEMP_FILE, request.tempFile.absolutePath)
     putExtra(EXTRA_FINAL_FILE, request.finalFile.absolutePath)
@@ -224,9 +236,21 @@ private fun Intent.toCompressionRequest(): ServiceCompressionRequest? {
         customVideoBitrate = getIntExtra(EXTRA_VIDEO_BITRATE, -1).takeIf { it > 0 },
         customAudioBitrate = getIntExtra(EXTRA_AUDIO_BITRATE, -1).takeIf { it > 0 }
     )
+    val starts = getLongArrayExtra(EXTRA_SEGMENT_STARTS) ?: LongArray(0)
+    val ends = getLongArrayExtra(EXTRA_SEGMENT_ENDS) ?: LongArray(0)
+    val segments = starts.asIterable().zip(ends.asIterable()).mapNotNull { (start, end) ->
+        if (end > start) TimeRange(start, end) else null
+    }
+    val crop = cropExtra()
+    val adjustments = VideoAdjustments(
+        keptSegments = segments,
+        crop = crop,
+        rotationDegrees = getIntExtra(EXTRA_ADJUSTMENT_ROTATION, 0)
+    ).normalized(videoInfo.durationMs)
     return ServiceCompressionRequest(
         videoInfo = videoInfo,
         settings = settings,
+        adjustments = adjustments,
         tempFile = File(tempPath),
         finalFile = File(finalPath),
         keepSourceDate = getBooleanExtra(EXTRA_KEEP_SOURCE_DATE, true)
@@ -235,6 +259,18 @@ private fun Intent.toCompressionRequest(): ServiceCompressionRequest? {
 
 private inline fun <reified T : Enum<T>> Intent.enumExtra(key: String, fallback: T): T =
     getStringExtra(key)?.let { runCatching { enumValueOf<T>(it) }.getOrNull() } ?: fallback
+
+private fun Intent.cropExtra(): CropRect? {
+    val left = getFloatExtra(EXTRA_CROP_LEFT, -1f)
+    val top = getFloatExtra(EXTRA_CROP_TOP, -1f)
+    val right = getFloatExtra(EXTRA_CROP_RIGHT, -1f)
+    val bottom = getFloatExtra(EXTRA_CROP_BOTTOM, -1f)
+    return if (left >= 0f && top >= 0f && right >= 0f && bottom >= 0f) {
+        runCatching { CropRect(left, top, right, bottom) }.getOrNull()
+    } else {
+        null
+    }
+}
 
 private const val EXTRA_URI = "uri"
 private const val EXTRA_DISPLAY_NAME = "display_name"
@@ -258,6 +294,13 @@ private const val EXTRA_AUDIO_MODE = "audio_mode"
 private const val EXTRA_TARGET_SIZE = "target_size"
 private const val EXTRA_VIDEO_BITRATE = "video_bitrate"
 private const val EXTRA_AUDIO_BITRATE = "audio_bitrate"
+private const val EXTRA_SEGMENT_STARTS = "segment_starts"
+private const val EXTRA_SEGMENT_ENDS = "segment_ends"
+private const val EXTRA_CROP_LEFT = "crop_left"
+private const val EXTRA_CROP_TOP = "crop_top"
+private const val EXTRA_CROP_RIGHT = "crop_right"
+private const val EXTRA_CROP_BOTTOM = "crop_bottom"
+private const val EXTRA_ADJUSTMENT_ROTATION = "adjustment_rotation"
 private const val EXTRA_KEEP_SOURCE_DATE = "keep_source_date"
 private const val EXTRA_TEMP_FILE = "temp_file"
 private const val EXTRA_FINAL_FILE = "final_file"

@@ -1,6 +1,8 @@
 package com.example.shrink.ui
 
+import android.widget.VideoView
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -42,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.example.shrink.compression.AudioMode
 import com.example.shrink.compression.CompressionEstimate
 import com.example.shrink.compression.CompressedVideo
@@ -50,9 +54,12 @@ import com.example.shrink.compression.CompressionJobState
 import com.example.shrink.compression.CompressionPreset
 import com.example.shrink.compression.CompressionSettings
 import com.example.shrink.compression.CompressorUiState
+import com.example.shrink.compression.CropRect
 import com.example.shrink.compression.FpsMode
 import com.example.shrink.compression.OutputCodec
 import com.example.shrink.compression.OutputResolution
+import com.example.shrink.compression.TimeRange
+import com.example.shrink.compression.VideoAdjustments
 import com.example.shrink.compression.VideoInfo
 import com.example.shrink.util.formatBytes
 import com.example.shrink.util.formatDuration
@@ -115,6 +122,7 @@ fun CompressorScreen(
     onKeepSourceDateChange: (Boolean) -> Unit,
     onPickVideo: () -> Unit,
     onSettingsChange: (CompressionSettings) -> Unit,
+    onAdjustmentsChange: (VideoAdjustments) -> Unit,
     onCompress: () -> Unit,
     onCancel: () -> Unit,
     onClear: () -> Unit,
@@ -124,34 +132,57 @@ fun CompressorScreen(
     onRetryH264: () -> Unit
 ) {
     MaterialTheme(colorScheme = appColors(darkMode, accent)) {
-        Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item { Header(page, onPageChange) }
-                if (page == AppPage.Settings) {
-                    item { AppSettings(darkMode, onDarkModeChange, accent, onAccentChange, keepSourceDate, onKeepSourceDateChange) }
-                } else {
-                    when {
-                        state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
-                            item { EmptyState(onPickVideo) }
-                            state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
-                        }
-                        state.jobState is CompressionJobState.LoadingMetadata -> item { LoadingCard("Reading video details") }
-                        else -> {
-                            state.selectedVideo?.let { item { MetadataCard(it) } }
-                            state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
-                            state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
-                            item { SettingsSection(state.settings, state.selectedVideo, onSettingsChange) }
-                            state.estimate?.let { item { EstimateSection(it) } }
-                            item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
-                            state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
-                            state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
+        var editorOpen by remember { mutableStateOf(false) }
+        Box(Modifier.fillMaxSize()) {
+            Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item { Header(page, onPageChange) }
+                    if (page == AppPage.Settings) {
+                        item { AppSettings(darkMode, onDarkModeChange, accent, onAccentChange, keepSourceDate, onKeepSourceDateChange) }
+                    } else {
+                        when {
+                            state.selectedVideo == null && state.jobState !is CompressionJobState.LoadingMetadata -> {
+                                item { EmptyState(onPickVideo) }
+                                state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
+                            }
+                            state.jobState is CompressionJobState.LoadingMetadata -> item { LoadingCard("Reading video details") }
+                            else -> {
+                                state.selectedVideo?.let {
+                                    item {
+                                        MetadataCard(
+                                            video = it,
+                                            adjustments = state.adjustments,
+                                            onEdit = { editorOpen = true }
+                                        )
+                                    }
+                                }
+                                state.warningMessage?.let { item { MessageCard(it, MessageTone.Warning) } }
+                                state.errorMessage?.let { item { MessageCard(it, MessageTone.Error) } }
+                                item { SettingsSection(state.settings, state.selectedVideo, onSettingsChange) }
+                                state.estimate?.let { item { EstimateSection(it) } }
+                                item { ActionSection(state, onCompress, onCancel, onClear, onRetryH264) }
+                                state.output?.let { item { ResultSection(it, onShare, onOpen, onSave, onClear) } }
+                                state.savedMessage?.let { item { MessageCard(it, MessageTone.Success) } }
+                            }
                         }
                     }
                 }
+            }
+            val video = state.selectedVideo
+            if (editorOpen && video != null) {
+                VideoEditor(
+                    video = video,
+                    initialAdjustments = state.adjustments,
+                    onDone = {
+                        onAdjustmentsChange(it)
+                        editorOpen = false
+                    },
+                    onCancel = { editorOpen = false }
+                )
             }
         }
     }
@@ -244,7 +275,7 @@ private fun LoadingCard(message: String) {
 }
 
 @Composable
-private fun MetadataCard(video: VideoInfo) {
+private fun MetadataCard(video: VideoInfo, adjustments: VideoAdjustments, onEdit: () -> Unit) {
     Panel {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
@@ -262,7 +293,172 @@ private fun MetadataCard(video: VideoInfo) {
             MetadataRow("Video", video.videoCodec?.codecLabel() ?: "Unknown")
             MetadataRow("Audio", if (video.hasAudio) video.audioCodec?.codecLabel() ?: "Present" else "None")
             if (video.isHdr == true) MetadataRow("HDR", "Detected")
+            if (adjustments.hasEdits(video.durationMs)) {
+                MetadataRow("Edits", adjustmentSummary(video, adjustments))
+            }
+            OutlinedButton(onClick = onEdit, modifier = Modifier.fillMaxWidth()) { Text("Edit video") }
         }
+    }
+}
+
+@Composable
+private fun VideoEditor(
+    video: VideoInfo,
+    initialAdjustments: VideoAdjustments,
+    onDone: (VideoAdjustments) -> Unit,
+    onCancel: () -> Unit
+) {
+    var adjustments by remember(video.uri, initialAdjustments) { mutableStateOf(initialAdjustments.normalized(video.durationMs)) }
+    var undoStack by remember(video.uri) { mutableStateOf<List<VideoAdjustments>>(emptyList()) }
+    var selectedSegment by remember(video.uri) { mutableStateOf(0) }
+    var playhead by remember(video.uri) { mutableStateOf(0f) }
+    val duration = (video.durationMs ?: 0L).coerceAtLeast(0L)
+
+    fun update(next: VideoAdjustments) {
+        undoStack = undoStack + adjustments
+        adjustments = next.normalized(video.durationMs)
+        selectedSegment = selectedSegment.coerceIn(0, (adjustments.keptSegments.size - 1).coerceAtLeast(0))
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            item {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Edit video", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                    TextButton(onClick = onCancel) { Text("Cancel") }
+                    Button(onClick = { onDone(adjustments) }) { Text("Done") }
+                }
+            }
+            item {
+                AndroidView(
+                    modifier = Modifier.fillMaxWidth().height(260.dp).background(Color.Black),
+                    factory = { context ->
+                        VideoView(context).apply {
+                            setVideoURI(video.uri)
+                            setOnPreparedListener {
+                                it.isLooping = true
+                                start()
+                            }
+                        }
+                    },
+                    update = {}
+                )
+            }
+            item {
+                Panel {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Timeline", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Slider(value = playhead, onValueChange = { playhead = it }, valueRange = 0f..1f)
+                        ResultRow("Playhead", formatDuration((duration * playhead).toLong()))
+                        adjustments.keptSegments.forEachIndexed { index, range ->
+                            SelectRow(
+                                title = "Keep ${index + 1}",
+                                detail = "${formatDuration(range.startMs)} - ${formatDuration(range.endMs)}",
+                                selected = selectedSegment == index,
+                                onClick = { selectedSegment = index }
+                            )
+                        }
+                    }
+                }
+            }
+            item {
+                Panel {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Cut", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        TrimControls(
+                            range = adjustments.keptSegments.getOrNull(selectedSegment),
+                            durationMs = duration,
+                            onChange = { range ->
+                                update(adjustments.copy(keptSegments = adjustments.keptSegments.toMutableList().also { it[selectedSegment] = range }))
+                            }
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = {
+                                    val splitAt = (duration * playhead).toLong()
+                                    val range = adjustments.keptSegments.getOrNull(selectedSegment) ?: return@OutlinedButton
+                                    if (splitAt > range.startMs && splitAt < range.endMs) {
+                                        val next = adjustments.keptSegments.toMutableList()
+                                        next[selectedSegment] = TimeRange(range.startMs, splitAt)
+                                        next.add(selectedSegment + 1, TimeRange(splitAt, range.endMs))
+                                        update(adjustments.copy(keptSegments = next))
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Split at playhead") }
+                            OutlinedButton(
+                                onClick = {
+                                    if (adjustments.keptSegments.size > 1) {
+                                        update(adjustments.copy(keptSegments = adjustments.keptSegments.filterIndexed { index, _ -> index != selectedSegment }))
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Delete segment") }
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                val previous = undoStack.lastOrNull() ?: return@OutlinedButton
+                                undoStack = undoStack.dropLast(1)
+                                adjustments = previous
+                            },
+                            enabled = undoStack.isNotEmpty(),
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Undo") }
+                    }
+                }
+            }
+            item {
+                Panel {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Frame", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { update(adjustments.copy(rotationDegrees = (adjustments.rotationDegrees + 90) % 360)) },
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Rotate") }
+                            OutlinedButton(
+                                onClick = {
+                                    update(
+                                        adjustments.copy(
+                                            crop = if (adjustments.crop == null) CropRect(0.05f, 0.05f, 0.05f, 0.05f) else null
+                                        )
+                                    )
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) { Text(if (adjustments.crop == null) "Crop" else "Clear crop") }
+                        }
+                        ResultRow("Rotation", "${adjustments.rotationDegrees} deg")
+                        ResultRow("Crop", if (adjustments.crop == null) "None" else "5% each edge")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrimControls(range: TimeRange?, durationMs: Long, onChange: (TimeRange) -> Unit) {
+    if (range == null || durationMs <= 0L) return
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Start ${formatDuration(range.startMs)}", color = MaterialTheme.colorScheme.secondary)
+        Slider(
+            value = range.startMs.toFloat(),
+            onValueChange = { onChange(TimeRange(it.toLong().coerceAtMost(range.endMs - 1), range.endMs)) },
+            valueRange = 0f..durationMs.toFloat()
+        )
+        Text("End ${formatDuration(range.endMs)}", color = MaterialTheme.colorScheme.secondary)
+        Slider(
+            value = range.endMs.toFloat(),
+            onValueChange = { onChange(TimeRange(range.startMs, it.toLong().coerceAtLeast(range.startMs + 1))) },
+            valueRange = 0f..durationMs.toFloat()
+        )
     }
 }
 
@@ -542,6 +738,17 @@ private fun availableResolutions(video: VideoInfo?): List<OutputResolution> {
     return OutputResolution.entries.filter {
         it == OutputResolution.ORIGINAL || (it.shortSideLimit() ?: Int.MAX_VALUE) <= sourceShortSide
     }
+}
+
+private fun adjustmentSummary(video: VideoInfo, adjustments: VideoAdjustments): String {
+    val parts = mutableListOf<String>()
+    val adjustedDuration = adjustments.adjustedDurationMs(video.durationMs)
+    if (adjustedDuration != null && video.durationMs != null && adjustedDuration != video.durationMs) {
+        parts += formatDuration(adjustedDuration)
+    }
+    if (adjustments.rotationDegrees != 0) parts += "rotated"
+    if (adjustments.crop != null) parts += "cropped"
+    return parts.ifEmpty { listOf("Applied") }.joinToString(", ")
 }
 
 private fun OutputResolution.shortSideLimit() = when (this) {

@@ -15,6 +15,7 @@ import com.example.shrink.compression.CompressionSettings
 import com.example.shrink.compression.CompressorUiState
 import com.example.shrink.compression.OutputCodec
 import com.example.shrink.compression.OutputResolution
+import com.example.shrink.compression.VideoAdjustments
 import com.example.shrink.compression.VideoInfo
 import com.example.shrink.metadata.VideoMetadataReader
 import com.example.shrink.settings.AppPreferences
@@ -85,8 +86,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
                 _uiState.update {
                     it.copy(
                         selectedVideo = videoInfo,
+                        adjustments = VideoAdjustments.fullLength(videoInfo.durationMs),
                         settings = settings,
-                        estimate = CompressionPresetMapper.estimate(videoInfo, settings),
+                        estimate = CompressionPresetMapper.estimate(videoInfo, settings, VideoAdjustments.fullLength(videoInfo.durationMs)),
                         jobState = CompressionJobState.Idle,
                         warningMessage = warning,
                         errorMessage = null
@@ -97,11 +99,18 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun updateSettings(settings: CompressionSettings) {
-        val estimate = _uiState.value.selectedVideo?.let { CompressionPresetMapper.estimate(it, settings) }
+        val estimate = _uiState.value.selectedVideo?.let { CompressionPresetMapper.estimate(it, settings, _uiState.value.adjustments) }
         _uiState.update { it.copy(settings = settings, estimate = estimate, warningMessage = estimate?.warning ?: it.warningMessage) }
         viewModelScope.launch {
             appPreferences.saveCompressionSettings(settings)
         }
+    }
+
+    fun updateAdjustments(adjustments: VideoAdjustments) {
+        val video = _uiState.value.selectedVideo ?: return
+        val normalized = adjustments.normalized(video.durationMs)
+        val estimate = CompressionPresetMapper.estimate(video, _uiState.value.settings, normalized)
+        _uiState.update { it.copy(adjustments = normalized, estimate = estimate, warningMessage = estimate.warning ?: it.warningMessage) }
     }
 
     fun setNotificationsEnabled(enabled: Boolean) {
@@ -128,7 +137,7 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
         }
         val settings = _uiState.value.settings
         val managed = outputFileManager.createOutput(video.displayName)
-        val request = ServiceCompressionRequest(video, settings, managed.tempFile, managed.finalFile, _uiState.value.keepSourceDate)
+        val request = ServiceCompressionRequest(video, settings, _uiState.value.adjustments, managed.tempFile, managed.finalFile, _uiState.value.keepSourceDate)
         _uiState.update {
             it.copy(
                 jobState = CompressionJobState.Preparing,

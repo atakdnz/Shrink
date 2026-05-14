@@ -4,8 +4,13 @@ import androidx.media3.common.MimeTypes
 import kotlin.math.roundToInt
 
 object CompressionPresetMapper {
-    fun mapToEncodingConfig(videoInfo: VideoInfo, settings: CompressionSettings): EncodingConfig {
+    fun mapToEncodingConfig(
+        videoInfo: VideoInfo,
+        settings: CompressionSettings,
+        adjustments: VideoAdjustments = VideoAdjustments()
+    ): EncodingConfig {
         val (sourceWidth, sourceHeight) = displayDimensions(videoInfo)
+        val adjustedDimensions = adjustedDimensions(sourceWidth, sourceHeight, adjustments)
         val codecMultiplier = if (settings.codec == OutputCodec.H264_AVC) 1.45 else 1.0
         val targetLongSide = when (settings.preset) {
             CompressionPreset.HIGH -> 2160
@@ -14,7 +19,7 @@ object CompressionPresetMapper {
             CompressionPreset.TINY -> 480
             CompressionPreset.CUSTOM -> resolutionLongSide(settings.resolution)
         }
-        val dimensions = scaledDimensions(sourceWidth, sourceHeight, targetLongSide)
+        val dimensions = scaledDimensions(adjustedDimensions.first, adjustedDimensions.second, targetLongSide)
         val fps = when (settings.preset) {
             CompressionPreset.HIGH -> capFps(videoInfo.fps, 60)
             CompressionPreset.BALANCED, CompressionPreset.SMALL -> capFps(videoInfo.fps, 30)
@@ -23,7 +28,8 @@ object CompressionPresetMapper {
         }
         val audioBitrate = settings.customAudioBitrate ?: if (settings.audioMode == AudioMode.REMOVE) null else 128_000
         val presetBitrate = bitrateFor(dimensions.second ?: sourceHeight, settings.preset, codecMultiplier)
-        val targetBitrate = targetSizeBitrate(videoInfo.durationMs, settings.targetSizeBytes, audioBitrate, settings.audioMode)
+        val adjustedDurationMs = adjustments.adjustedDurationMs(videoInfo.durationMs)
+        val targetBitrate = targetSizeBitrate(adjustedDurationMs, settings.targetSizeBytes, audioBitrate, settings.audioMode)
         val requestedBitrate = settings.customVideoBitrate ?: targetBitrate ?: presetBitrate
         val warning = if (targetBitrate != null && targetBitrate < 350_000) {
             "Target size may be too small for this video. Output quality may be poor."
@@ -40,17 +46,27 @@ object CompressionPresetMapper {
         )
     }
 
-    fun estimate(videoInfo: VideoInfo, settings: CompressionSettings): CompressionEstimate {
-        val config = mapToEncodingConfig(videoInfo, settings)
-        val estimatedSize = estimateOutputSizeBytes(videoInfo.durationMs, config.videoBitrate, config.audioBitrate, config.removeAudio)
+    fun estimate(
+        videoInfo: VideoInfo,
+        settings: CompressionSettings,
+        adjustments: VideoAdjustments = VideoAdjustments()
+    ): CompressionEstimate {
+        val config = mapToEncodingConfig(videoInfo, settings, adjustments)
+        val adjustedDurationMs = adjustments.adjustedDurationMs(videoInfo.durationMs)
+        val adjustedDisplayDimensions = adjustedDimensions(
+            displayDimensions(videoInfo).first,
+            displayDimensions(videoInfo).second,
+            adjustments
+        )
+        val estimatedSize = estimateOutputSizeBytes(adjustedDurationMs, config.videoBitrate, config.audioBitrate, config.removeAudio)
         val savings = estimatedSize?.let { outputSize ->
             videoInfo.sizeBytes?.takeIf { it > 0L }?.let { originalSize ->
                 (1f - outputSize.toFloat() / originalSize.toFloat()) * 100f
             }
         }
         return CompressionEstimate(
-            outputWidth = config.outputWidth ?: videoInfo.width,
-            outputHeight = config.outputHeight ?: videoInfo.height,
+            outputWidth = config.outputWidth ?: adjustedDisplayDimensions.first,
+            outputHeight = config.outputHeight ?: adjustedDisplayDimensions.second,
             videoBitrate = config.videoBitrate,
             audioBitrate = config.audioBitrate,
             fps = config.fps,
@@ -75,6 +91,18 @@ object CompressionPresetMapper {
         if (width == null || height == null) return width to height
         val rotation = videoInfo.rotationDegrees ?: 0
         return if (rotation == 90 || rotation == 270) height to width else width to height
+    }
+
+    private fun adjustedDimensions(width: Int?, height: Int?, adjustments: VideoAdjustments): Pair<Int?, Int?> {
+        if (width == null || height == null) return width to height
+        val crop = adjustments.crop
+        val croppedWidth = crop?.let { (width * (1f - it.leftFraction - it.rightFraction)).roundToInt() } ?: width
+        val croppedHeight = crop?.let { (height * (1f - it.topFraction - it.bottomFraction)).roundToInt() } ?: height
+        return if (adjustments.rotationDegrees == 90 || adjustments.rotationDegrees == 270) {
+            croppedHeight to croppedWidth
+        } else {
+            croppedWidth to croppedHeight
+        }
     }
 
     private fun scaledDimensions(width: Int?, height: Int?, maxResolution: Int?): Pair<Int?, Int?> {

@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onSettingsChange = viewModel::updateSettings,
+                onAdjustmentsChange = viewModel::updateAdjustments,
                 onCompress = viewModel::compress,
                 onCancel = viewModel::cancel,
                 onClear = viewModel::clear,

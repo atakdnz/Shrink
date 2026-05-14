@@ -66,6 +66,40 @@ class CompressionPresetMapperTest {
     }
 
     @Test
+    fun estimateUsesAdjustedDurationForMiddleCuts() {
+        val estimate = CompressionPresetMapper.estimate(
+            videoInfo = videoInfo(durationMs = 60_000),
+            settings = CompressionSettings.default().copy(
+                customVideoBitrate = 1_000_000,
+                customAudioBitrate = 128_000
+            ),
+            adjustments = VideoAdjustments(
+                keptSegments = listOf(
+                    TimeRange(0L, 10_000L),
+                    TimeRange(30_000L, 45_000L)
+                )
+            )
+        )
+
+        assertEquals(3_525_000L, estimate.estimatedOutputSizeBytes)
+    }
+
+    @Test
+    fun cropAndRotateAffectEstimatedResolution() {
+        val estimate = CompressionPresetMapper.estimate(
+            videoInfo = videoInfo(width = 2000, height = 1000),
+            settings = CompressionSettings.default().copy(preset = CompressionPreset.CUSTOM, resolution = OutputResolution.ORIGINAL),
+            adjustments = VideoAdjustments(
+                crop = CropRect(0.1f, 0.1f, 0.1f, 0.1f),
+                rotationDegrees = 90
+            )
+        )
+
+        assertEquals(800, estimate.outputWidth)
+        assertEquals(1600, estimate.outputHeight)
+    }
+
+    @Test
     fun originalResolutionDoesNotUpscaleSmallVideo() {
         val config = CompressionPresetMapper.mapToEncodingConfig(
             videoInfo = videoInfo(width = 1280, height = 720, fps = 24f),
