@@ -7,7 +7,11 @@ import android.media.MediaFormat
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.provider.MediaStore
 import com.example.shrink.compression.VideoInfo
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 class VideoMetadataReader(private val context: Context) {
     fun read(uri: Uri): VideoInfo {
@@ -20,12 +24,16 @@ class VideoMetadataReader(private val context: Context) {
         var height: Int? = null
         var rotation: Int? = null
         var isHdr: Boolean? = null
+        var capturedAtMillis: Long? = queryMediaDateMillis(resolver, uri)
         try {
             retriever.setDataSource(context, uri)
             duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
             width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
             height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
             rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull()
+            capturedAtMillis = capturedAtMillis ?: parseRetrieverDate(
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DATE)
+            )
             isHdr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COLOR_TRANSFER)
                 ?.toIntOrNull()
                 ?.let { it == MediaFormat.COLOR_TRANSFER_ST2084 || it == MediaFormat.COLOR_TRANSFER_HLG }
@@ -47,7 +55,8 @@ class VideoMetadataReader(private val context: Context) {
             audioCodec = trackInfo.audioCodec,
             hasAudio = trackInfo.hasAudio,
             isHdr = isHdr,
-            rotationDegrees = rotation
+            rotationDegrees = rotation,
+            capturedAtMillis = capturedAtMillis
         )
     }
 
@@ -71,6 +80,34 @@ class VideoMetadataReader(private val context: Context) {
         resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getLong(0) else null
         }
+
+    private fun queryMediaDateMillis(resolver: ContentResolver, uri: Uri): Long? {
+        val columns = arrayOf(
+            MediaStore.Video.Media.DATE_TAKEN,
+            MediaStore.MediaColumns.DATE_MODIFIED,
+            MediaStore.MediaColumns.DATE_ADDED
+        )
+        return runCatching {
+            resolver.query(uri, columns, null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) return@use null
+                val dateTaken = cursor.longOrNull(0)?.takeIf { it > 0L }
+                val dateModified = cursor.longOrNull(1)?.takeIf { it > 0L }?.times(1000L)
+                val dateAdded = cursor.longOrNull(2)?.takeIf { it > 0L }?.times(1000L)
+                dateTaken ?: dateModified ?: dateAdded
+            }
+        }.getOrNull()
+    }
+
+    private fun android.database.Cursor.longOrNull(index: Int): Long? =
+        if (index >= 0 && !isNull(index)) getLong(index) else null
+
+    private fun parseRetrieverDate(value: String?): Long? {
+        if (value.isNullOrBlank()) return null
+        val parser = SimpleDateFormat("yyyyMMdd'T'HHmmss.SSS'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        return runCatching { parser.parse(value)?.time }.getOrNull()
+    }
 
     private fun readTrackInfo(uri: Uri): TrackInfo {
         val extractor = MediaExtractor()

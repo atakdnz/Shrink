@@ -15,7 +15,8 @@ data class VideoInfo(
     val audioCodec: String?,
     val hasAudio: Boolean,
     val isHdr: Boolean?,
-    val rotationDegrees: Int?
+    val rotationDegrees: Int?,
+    val capturedAtMillis: Long?
 )
 
 data class CompressionSettings(

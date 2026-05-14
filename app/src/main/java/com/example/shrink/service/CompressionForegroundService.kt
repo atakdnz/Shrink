@@ -174,6 +174,7 @@ private fun Intent.putCompressionRequest(request: ServiceCompressionRequest): In
     putExtra(EXTRA_IS_HDR, request.videoInfo.isHdr ?: false)
     putExtra(EXTRA_IS_HDR_KNOWN, request.videoInfo.isHdr != null)
     putExtra(EXTRA_ROTATION, request.videoInfo.rotationDegrees ?: -1)
+    putExtra(EXTRA_CAPTURED_AT, request.videoInfo.capturedAtMillis ?: -1L)
     putExtra(EXTRA_PRESET, request.settings.preset.name)
     putExtra(EXTRA_RESOLUTION, request.settings.resolution.name)
     putExtra(EXTRA_CODEC, request.settings.codec.name)
@@ -207,7 +208,8 @@ private fun Intent.toCompressionRequest(): ServiceCompressionRequest? {
         audioCodec = getStringExtra(EXTRA_AUDIO_CODEC),
         hasAudio = getBooleanExtra(EXTRA_HAS_AUDIO, false),
         isHdr = if (getBooleanExtra(EXTRA_IS_HDR_KNOWN, false)) getBooleanExtra(EXTRA_IS_HDR, false) else null,
-        rotationDegrees = getIntExtra(EXTRA_ROTATION, -1).takeIf { it >= 0 }
+        rotationDegrees = getIntExtra(EXTRA_ROTATION, -1).takeIf { it >= 0 },
+        capturedAtMillis = getLongExtra(EXTRA_CAPTURED_AT, -1L).takeIf { it > 0L }
     )
     val settings = CompressionSettings(
         preset = enumExtra(EXTRA_PRESET, CompressionPreset.BALANCED),
@@ -238,6 +240,7 @@ private const val EXTRA_HAS_AUDIO = "has_audio"
 private const val EXTRA_IS_HDR = "is_hdr"
 private const val EXTRA_IS_HDR_KNOWN = "is_hdr_known"
 private const val EXTRA_ROTATION = "rotation"
+private const val EXTRA_CAPTURED_AT = "captured_at"
 private const val EXTRA_PRESET = "preset"
 private const val EXTRA_RESOLUTION = "resolution"
 private const val EXTRA_CODEC = "codec"

@@ -74,6 +74,7 @@ class Media3CompressionEngine(private val context: Context) : VideoCompressionEn
                         )
                         return
                     }
+                    input.videoInfo.capturedAtMillis?.let { final.setLastModified(it) }
                     val size = final.length()
                     val result = CompressionResult.Success(final, size, input.videoInfo.sizeBytes, null)
                     continuation.resume(result)

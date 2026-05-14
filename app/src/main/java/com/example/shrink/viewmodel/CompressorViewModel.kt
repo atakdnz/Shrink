@@ -155,8 +155,9 @@ class CompressorViewModel(application: Application) : AndroidViewModel(applicati
 
     fun saveToMovies() {
         val file = _uiState.value.output?.file ?: return
+        val capturedAtMillis = _uiState.value.selectedVideo?.capturedAtMillis
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { mediaStoreSaver.save(file) }
+            val result = withContext(Dispatchers.IO) { mediaStoreSaver.save(file, capturedAtMillis) }
             _uiState.update {
                 it.copy(
                     savedMessage = if (result.isSuccess) "Saved to Movies/VideoCompressor." else "Save failed: ${result.exceptionOrNull()?.message ?: "Unknown error"}"

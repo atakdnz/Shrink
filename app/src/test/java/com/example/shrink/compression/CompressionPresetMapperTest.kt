@@ -106,6 +106,7 @@ class CompressionPresetMapperTest {
         audioCodec = "audio/mp4a-latm",
         hasAudio = true,
         isHdr = false,
-        rotationDegrees = rotationDegrees
+        rotationDegrees = rotationDegrees,
+        capturedAtMillis = 1_700_000_000_000L
     )
 }
